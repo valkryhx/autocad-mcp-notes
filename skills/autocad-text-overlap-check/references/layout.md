@@ -43,6 +43,9 @@ risk obvious.
 draw_test/overlap_proto/
 ├── clean.py           27 well-spaced texts -> must report 0
 ├── planted.py         6 planted defects + a control group -> 6/6, 0 false
+├── drawing8.py        a whole plan: 7 defects + 5 clean controls in one file
+├── Drawing8.dxf       what drawing8.py builds (kept as the fixture)
+├── Drawing8.dwg       the same drawing saved by AutoCAD 2026, round-trip tested
 ├── crosscheck.py      11 COM-built texts vs GetBoundingBox
 ├── anchors.py         9 attachment points + 90° rotation, compares corners
 └── verify/

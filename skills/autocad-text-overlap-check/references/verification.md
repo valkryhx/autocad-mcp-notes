@@ -84,6 +84,48 @@ These need AutoCAD 2026 running with COM available:
 cd draw_test/overlap_proto
 ```
 
+### `drawing8.py` — the whole thing at once
+
+The acceptance test that matters most, because it is the only one that checks
+detection **and** quietness in a single drawing. `Drawing8.dxf` is a small but
+complete plan — walls with a door opening, axis lines and bubbles, a room label
+stack, a rack row, dimensions, a title, and a 1:50 A3 paper layout — so every
+finding lands in a context a reader recognises.
+
+Seven defects are planted, one per kind:
+
+| planted | how |
+|---|---|
+| `text_text` | two cabinet labels 150 units apart on 250-high text |
+| `text_curve` | a partition wall through the standby-plant label |
+| `text_scale` | dimension text 2.5 units tall among 250-unit labels |
+| `text_illegible` | the same dimensions: 2.5 units at 1:50 = 0.05 mm |
+| `text_hidden` | a note on `REF-NOTES`, which is switched off |
+| `text_duplicate` | `R-01dup` drawn twice at the same point |
+| `text_glyphless` | an area label in `Standard` (`txt.shx`), no `²` glyph |
+
+Five clean controls must stay silent — these are the ones a naive checker would
+get wrong:
+
+* axis numbers **inside** their bubbles (normal drafting, not a collision),
+* a second area label in the `CN` style (`simsun.ttc`), which does draw `²`,
+* the room label stack, properly spaced,
+* rack tags, properly spaced,
+* ASCII text in the `SHX` style.
+
+```bash
+python draw_test/overlap_proto/drawing8.py
+```
+
+Expect `PASS: Drawing8 is diagnosed completely and the clean controls stay
+quiet`. The script also applies every offered fix and re-checks, so a fix that
+does not actually clear its finding fails the run.
+
+`Drawing8.dwg` is the same drawing saved by AutoCAD 2026, and re-checking it
+after a round-trip through AutoCAD still yields exactly the same seven findings -
+which is the evidence that the checks read the format AutoCAD really writes, not
+just ezdxf's own output.
+
 ### `crosscheck.py` — box against AutoCAD, character by character
 
 Builds a drawing with 11 known texts through COM, saves it as DXF

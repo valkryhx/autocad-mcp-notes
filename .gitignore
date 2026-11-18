@@ -48,3 +48,10 @@ bug.md
 # 文字交叠检查的测试夹具：ezdxf 1.4.4 没有 table API，也拒绝复制 ACAD_TABLE
 # （CopyNotSupported），造不出真实表格和标注的样本，所以这份图不可替代。
 !draw_test/123_check.dxf
+
+# Drawing8: 一张图同时含 7 类已植入缺陷和 5 项干净对照，是最有价值的
+# 验收夹具——既证明「找得到真的」也证明「不误报干净的」。
+# 由 draw_test/overlap_proto/drawing8.py 生成，DWG 是 AutoCAD 2026 往返验证过的。
+!draw_test/overlap_proto/Drawing8.dxf
+!draw_test/overlap_proto/Drawing8.dwg
+!draw_test/overlap_proto/drawing8.py
