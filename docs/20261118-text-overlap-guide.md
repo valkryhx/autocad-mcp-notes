@@ -75,15 +75,30 @@ D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe -m tools.text_overlap 你的�
 | 行 | 意思 |
 |---|---|
 | `measured 319 text entities` | 一共量了 319 行字（**包括块里、表格里、标注里的**） |
-| `6 finding(s)` | 找到 6 个问题，下面按类型分开统计 |
+| `6 finding(s)` | 找到 6 条问题，下面按类型分开统计 |
 | `1. text_text at (12510, 24039)` | 第 1 个问题，位置在图上的 x=12510, y=24039 |
-| `D7 [A-TEXT] C` | 这行字叫 `C`，在 `A-TEXT` 图层，图元编号 `D7` |
+| `D7 [A-TEXT] C [style CN]` | 这行字叫 `C`，在 `A-TEXT` 图层，用 `CN` 样式，图元编号 `D7` |
 | `crosses D2 ... B` | 它压住了另一行字 `B`（编号 `D2`） |
 | `overlap 41%` | 重叠了 41%（按较小的那个框算） |
 | `fix: entity_move(...)` | **怎么改**：把 `D7` 往右挪 286.5 单位 |
 
+### 「一条」不等于「一行字」
+
+这条最容易被误读。
+
+`text_scale`、`text_hidden`、`text_illegible`、`text_glyphless` 这四类是**分组**的
+——同一类问题压成**一条**，不管涉及多少行字。所以摘要里会写成：
+
+```
+12 finding(s): 2 text-on-text, 4 text-on-geometry, 6 too small on paper (129 texts)
+                                                              ↑ 6 条，但覆盖 129 行字
+```
+
+**「6」是 6 组，不是 6 个字。** 报数的时候要说「129 行字太小」，不能说「6 个问题」
+——后者会让人以为随手改改就完事了。
+
 > 上表是同一张图 `gpu_dc_100.dxf` 的**完整实测输出**，现在实际是 **12 条**
-> （2 互压 + 4 穿线 + 6 出图过小）。完整原文见
+> （2 互压 + 4 穿线 + 6 组出图过小，共覆盖 135 处文字）。完整原文见
 > `skills/autocad-text-overlap-check/assets/sample-report.txt`。
 
 ---
@@ -124,6 +139,22 @@ Move or shorten whatever crosses it, or resize the text
 | 挪**穿过去的那根线** | 那根线是可以动的（比如一道墙可以开洞、一条轴线可以改短） |
 | 把字改短 | 文字太长，比如「TELECOM EQUIPMENT ROOM」缩成「TE ROOM」 |
 | 把字改小 | 但如果改小就变成 `text_scale` 问题了，慎用 |
+
+**先看切得多深。** 穿线类的 `note` 里会写穿透程度：
+
+```
+note: LINE crosses this text; the worst one runs 100% of the text height inside the box
+note: ARC crosses this text; the worst one runs 40% of the text height inside the box
+```
+
+| 穿透 | 含义 | 要不要改 |
+|---|---|---|
+| **100%** | 字被**整条切断**，那行字完全没法看 | 必须改 |
+| 50% 上下 | 切断半个字 | 基本要改 |
+| 20% 以下 | 只是蹭到边缘 | 常常可以不管 |
+
+实测你的 `telecom_equipment_room_plan.dxf`：`BAT1`、`BAT2` 是 100%（被竖线整条贯穿），
+而房间名那条是 40%（门弧擦过左侧）。
 
 ### 情况三：`text_scale`
 

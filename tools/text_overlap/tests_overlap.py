@@ -733,6 +733,85 @@ def test_block_text_says_why_it_has_no_fix() -> None:
         check("the note says where to edit", "inside the block definition" in note, note)
 
 
+def test_summary_counts_texts_not_rows() -> None:
+    """A grouped finding must report how many texts it covers.
+
+    `text_scale`, `text_illegible`, `text_glyphless` and `text_hidden` collapse a
+    whole class into one row, so counting rows understates the damage: measured
+    on `gpu_dc_100.dxf`, 6 illegible rows are 129 texts, and "6 too small" reads
+    as six labels.
+    """
+    print("grouped findings report their text count")
+    from tools.text_overlap.__main__ import _human
+
+    doc, msp = _new("")
+    # Six normal labels plus three tiny ones at the same height: the three
+    # collapse into one row, so `affected` is 3 and the field is emitted.
+    for index in range(6):
+        ent = msp.add_mtext(
+            f"note {index}", dxfattribs={"char_height": 250, "style": "CN"}
+        )
+        ent.dxf.attachment_point = 1
+        ent.dxf.insert = (index * 5000.0, 0.0)
+    for index in range(3):
+        tiny = msp.add_mtext(f"tiny {index}", dxfattribs={"char_height": 20, "style": "CN"})
+        tiny.dxf.attachment_point = 1
+        tiny.dxf.insert = (index * 1000.0, 5000.0)
+    report = detect(_save(doc, "ov_rowcount.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_scale"]
+    check("one row for the scale outliers", len(rows) == 1, str(report["by_kind"]))
+    if rows:
+        check(
+            "the row says how many texts it covers",
+            rows[0].get("affected_texts") == 3,
+            str(rows[0].get("affected_texts")),
+        )
+    text = _human(report)
+    check("the summary is printed", "finding(s)" in text, text[:120])
+
+
+def test_curve_penetration_is_reported() -> None:
+    """A curve cutting a label in half must be distinguishable from a graze.
+
+    Both are `text_curve`, but the drafter treats them differently. Measured on
+    `telecom_equipment_room_plan.dxf`, where one crossing runs 100% of the text
+    height and another 40%.
+    """
+    print("curve penetration depth")
+    doc, msp = _new("")
+    # A vertical line through the middle of the label: full penetration.
+    ent = msp.add_mtext("CROSS", dxfattribs={"char_height": 200, "style": "CN"})
+    ent.dxf.attachment_point = 1
+    ent.dxf.insert = (0.0, 0.0)
+    msp.add_line((100.0, 200.0), (100.0, -400.0))
+    report = detect(_save(doc, "ov_pen_deep.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_curve"]
+    check("a crossing line is reported", len(rows) == 1, str(report["by_kind"]))
+    if rows:
+        note = rows[0].get("note", "")
+        check("the note gives a percentage", "%" in note, note)
+        check("it reads as a full cut-through", "100%" in note, note)
+
+    # A line clipping only the very bottom of the box: shallow.
+    doc, msp = _new("")
+    ent = msp.add_mtext("CROSS", dxfattribs={"char_height": 200, "style": "CN"})
+    ent.dxf.attachment_point = 1
+    ent.dxf.insert = (0.0, 0.0)
+    box_height = 200.0
+    msp.add_line((-100.0, -box_height + 2.0), (600.0, -box_height + 2.0))
+    report = detect(_save(doc, "ov_pen_shallow.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_curve"]
+    if rows:
+        note = rows[0].get("note", "")
+        check(
+            "a shallow graze reads as a small percentage",
+            "100%" not in note,
+            note,
+        )
+    else:
+        check("a graze below the core is not reported", True)
+
+
 def test_errors() -> None:
     print("error paths")
     try:
@@ -785,6 +864,8 @@ def main() -> int:
         test_glyphless_style_is_reported,
         test_duplicate_pair_is_reported_once,
         test_block_text_says_why_it_has_no_fix,
+        test_summary_counts_texts_not_rows,
+        test_curve_penetration_is_reported,
         test_non_uniform_block_is_reported,
         test_no_blocks_flag,
         test_errors,

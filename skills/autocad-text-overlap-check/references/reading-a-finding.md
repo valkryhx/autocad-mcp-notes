@@ -32,12 +32,18 @@ The header before the list tells you the scope, and it is worth reading:
 
 ```
   measured 319 text entities (310 in the space, 0 from 0 block/table container(s)), 377 curves
-  6 finding(s): 2 text-on-text, 4 text-on-geometry
+  12 finding(s): 2 text-on-text, 4 text-on-geometry, 6 too small on paper (129 texts)
 ```
 
 `texts_in_blocks > 0` means block/table contents were expanded and read. If a
 drawing has block references and that number is 0, something went wrong — check
 `not_checked`.
+
+**A row is not a text.** `text_scale`, `text_hidden`, `text_illegible` and
+`text_glyphless` group a whole class into one row each, so the row count
+understates the damage. That is what the parenthesised `(129 texts)` is for:
+six rows, 129 labels. Never quote the row count as "six problems" when a group
+is involved.
 
 ## Acting on a `fix`
 
@@ -79,6 +85,17 @@ Usually one label placed badly. The fix moves one of them clear. Two axis labels
 are — one label or one axis spacing has to change.
 
 ### `text_curve` — a line through a label
+
+The note gives the crossing count and **how deep the worst one cuts**:
+
+```
+note: 2 curve(s) cross this text; the worst one runs 100% of the text height inside the box
+note: ARC crosses this text; the worst one runs 40% of the text height inside the box
+```
+
+100% means the label is cut clean through — unreadable. A small percentage is a
+graze at an edge and may be acceptable. Both are reported because both cross the
+inset core, but only the first is certain to need a change.
 
 Check the layer of the crossing entity **before acting**:
 
@@ -135,12 +152,22 @@ labelled 走廊 are not reported.
 
 The size is in millimetres **on paper**, derived from the model height divided by
 the viewport's scale. A 160-unit label prints at 1.6 mm at 1:100 and 8 mm at
-1:20.
+1:20. The note names the culprit so you do not have to work it out:
 
-- If the whole drawing is affected, the plot scale or the text style is wrong.
+```
+note: 100 text(s) print at 1.6 mm on layout 'Layout1'; ISO 3098 sets the minimum
+      at 2.5 mm. The label is 160 units tall, so the viewport scale (1:100) or
+      the text height is what to change - not this label alone
+```
+
+- If the whole drawing is affected, the viewport scale is wrong — not the labels.
 - If a few are, raise just those.
 - ISO 3098's minimum is 2.5 mm for lettering; the project's own critique uses
   the same constant (`engineering/critique.py`).
+
+**This is a group, and the group is the message.** 129 texts at 1.5–2.3 mm in one
+drawing is a scale decision, not 129 mistakes. Changing the viewport from 1:100
+to 1:50 doubles every printed size and fixes all of them at once.
 
 **The usual root cause is a dimension style, not the drawing header.** `$DIMSCALE`
 in the file header is not what AutoCAD uses to draw an existing dimension — the

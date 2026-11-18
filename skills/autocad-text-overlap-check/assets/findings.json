@@ -1,136 +1,347 @@
 {
-  "path": "draw_test/123_dxf.dxf",
+  "path": "drawings/gpu-datacenter/gpu_dc_100.dxf",
   "layout": "Model",
-  "texts_measured": 142,
-  "texts_total": 57,
-  "texts_in_blocks": 67,
-  "dimensions": 18,
-  "texts_from_dimensions": 18,
-  "containers": 3,
-  "curves": 103,
+  "texts_measured": 319,
+  "texts_total": 310,
+  "texts_in_blocks": 0,
+  "dimensions": 9,
+  "texts_from_dimensions": 9,
+  "containers": 0,
+  "curves": 377,
   "findings": [
     {
-      "kind": "text_curve",
-      "handle": "50A in 4F5",
-      "layer": "A-SYMB-T-N",
-      "text": "TELECOM EQUIPMENT ROOM",
+      "kind": "text_text",
+      "handle": "D7",
+      "layer": "A-TEXT",
+      "text": "C",
       "box": [
-        14822.399,
-        756.531,
-        17327.601,
-        893.469
-      ],
-      "in_block": "4F5",
-      "style": "Standard",
-      "with": {
-        "handle": "501 in 4F5",
-        "type": "LINE",
-        "layer": "A-SYMB-T-N",
-        "text": null
-      },
-      "at": [
-        16075.0,
-        825.0
-      ],
-      "note": "2 curve(s) cross this text",
-      "fix": {
-        "tool": null,
-        "note": "this text lives in block reference 4F5; move or edit it inside the block definition, not here. ``entity_move`` needs the handle of a top-level entity"
-      }
-    },
-    {
-      "kind": "text_duplicate",
-      "handle": "10F",
-      "layer": "A-ROOM-T-N",
-      "text": "01",
-      "box": [
-        1868.62,
-        2466.028,
-        2023.548,
-        2593.671
-      ],
-      "style": "Standard",
-      "with": {
-        "handle": "8DB",
-        "type": "text",
-        "layer": "A-ROOM-T-N",
-        "text": "01",
-        "style": "Standard"
-      },
-      "at": [
-        1946.084,
-        2529.849
-      ],
-      "note": "the same text twice in the same place - one of them is a duplicate. Delete one rather than moving it",
-      "fix": {
-        "tool": "entity_delete",
-        "args": {
-          "handle": "8DB"
-        },
-        "which": "the later of the two",
-        "note": "keep 10F and delete 8DB, or the other way round - the two are identical apart from their handle"
-      }
-    },
-    {
-      "kind": "text_duplicate",
-      "handle": "110",
-      "layer": "A-ROOM-T-N",
-      "text": "54.48 m²",
-      "box": [
-        1868.62,
-        2266.028,
-        2547.593,
-        2394.694
+        12386.405,
+        23957.688,
+        12633.595,
+        24362.312
       ],
       "style": "CN",
       "with": {
-        "handle": "8DC",
+        "handle": "D2",
         "type": "text",
-        "layer": "A-ROOM-T-N",
-        "text": "54.48 m²",
+        "layer": "A-TEXT",
+        "text": "B",
         "style": "CN"
       },
+      "overlap_ratio": 0.4058,
       "at": [
-        2208.106,
-        2330.361
+        12510.0,
+        24038.844
       ],
-      "note": "the same text twice in the same place - one of them is a duplicate. Delete one rather than moving it",
       "fix": {
-        "tool": "entity_delete",
+        "tool": "entity_move",
         "args": {
-          "handle": "8DC"
+          "handle": "D7",
+          "dx": 286.5,
+          "dy": 0.0
         },
-        "which": "the later of the two",
-        "note": "keep 110 and delete 8DC, or the other way round - the two are identical apart from their handle"
+        "clears": "D2",
+        "moves": "286.50 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
       }
     },
     {
-      "kind": "text_glyphless",
-      "handle": "50C in 4F5",
-      "layer": "A-SYMB-T-N",
-      "text": "54.48 m²",
+      "kind": "text_text",
+      "handle": "D9",
+      "layer": "A-TEXT",
+      "text": "C",
       "box": [
-        17485.513,
-        760.667,
-        18164.487,
-        889.333
+        35366.405,
+        23957.688,
+        35613.595,
+        24362.312
       ],
-      "style": "Standard",
+      "style": "CN",
+      "with": {
+        "handle": "D4",
+        "type": "text",
+        "layer": "A-TEXT",
+        "text": "B",
+        "style": "CN"
+      },
+      "overlap_ratio": 0.4058,
       "at": [
-        17825.0,
-        825.0
+        35490.0,
+        24038.844
       ],
-      "note": "4 text(s) use style 'Standard' (font 'txt', no CJK/Unicode fallback) and contain '²': those characters do not plot. Point the text at a TrueType style (simsun.ttc / simhei.ttf) - and write the Unicode character, not a %% escape"
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "D9",
+          "dx": 286.5,
+          "dy": 0.0
+        },
+        "clears": "D4",
+        "moves": "286.50 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "252",
+      "layer": "A-TEXT",
+      "text": "CRAC-5",
+      "box": [
+        26972.191,
+        27327.399,
+        28227.809,
+        27632.601
+      ],
+      "style": "CN",
+      "with": {
+        "handle": "C1",
+        "type": "LINE",
+        "layer": "A-AXIS",
+        "text": null
+      },
+      "at": [
+        27600.0,
+        27480.0
+      ],
+      "note": "LINE crosses this text; the worst one runs 100% of the text height inside the box",
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "252",
+          "dx": 484.529,
+          "dy": 0.0
+        },
+        "clears": "C1",
+        "moves": "484.53 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "253",
+      "layer": "A-TEXT",
+      "text": "GPU 智算机房",
+      "box": [
+        20973.708,
+        27750.491,
+        24626.292,
+        28349.509
+      ],
+      "style": "CN",
+      "with": {
+        "handle": "BC",
+        "type": "LINE",
+        "layer": "A-AXIS",
+        "text": null
+      },
+      "at": [
+        22800.0,
+        28050.0
+      ],
+      "note": "LINE crosses this text; the worst one runs 100% of the text height inside the box",
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "253",
+          "dx": 324.392,
+          "dy": 0.0
+        },
+        "clears": "BC",
+        "moves": "324.39 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "254",
+      "layer": "A-TEXT",
+      "text": "288.0 m²     100 柜 × 12 kW",
+      "box": [
+        19786.77,
+        27231.416,
+        25813.23,
+        27608.584
+      ],
+      "style": "CN",
+      "with": {
+        "handle": "BC",
+        "type": "LINE",
+        "layer": "A-AXIS",
+        "text": null
+      },
+      "at": [
+        22800.0,
+        27420.0
+      ],
+      "note": "LINE crosses this text; the worst one runs 100% of the text height inside the box",
+      "fix": {
+        "tool": null,
+        "note": "no short shift clears this text - something is on every side of it. Move or shorten whatever crosses it, or resize the text"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "28C",
+      "layer": "A-TEXT",
+      "text": "监控大屏 4×4",
+      "box": [
+        29330.337,
+        23249.942,
+        31369.663,
+        23550.058
+      ],
+      "style": "CN",
+      "with": {
+        "handle": "B5",
+        "type": "LINE",
+        "layer": "A-DOOR",
+        "text": null
+      },
+      "at": [
+        30350.0,
+        23400.0
+      ],
+      "note": "2 curve(s) cross this text; the worst one runs 100% of the text height inside the box",
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "28C",
+          "dx": 0.0,
+          "dy": -636.794
+        },
+        "clears": "B5",
+        "moves": "636.79 drawing units down",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "21B",
+      "layer": "A-TEXT",
+      "text": "列头柜",
+      "box": [
+        22997.688,
+        29486.517,
+        23202.312,
+        30113.483
+      ],
+      "style": "CN",
+      "at": [
+        23100.0,
+        29800.0
+      ],
+      "note": "10 text(s) print at 1.5 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm. The label is 150 units tall, so the viewport scale (1:100) or the text height is what to change - not this label alone",
+      "affected_texts": 10
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "E6",
+      "layer": "A-TEXT",
+      "text": "01",
+      "box": [
+        17011.91,
+        29716.763,
+        17188.09,
+        29883.237
+      ],
+      "style": "CN",
+      "at": [
+        17100.0,
+        29800.0
+      ],
+      "note": "100 text(s) print at 1.6 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm. The label is 160 units tall, so the viewport scale (1:100) or the text height is what to change - not this label alone",
+      "affected_texts": 100
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "25E",
+      "layer": "A-TEXT",
+      "text": "AP1",
+      "box": [
+        15010.0,
+        14333.652,
+        15190.0,
+        14666.348
+      ],
+      "style": "CN",
+      "at": [
+        15100.0,
+        14500.0
+      ],
+      "note": "8 text(s) print at 1.8 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm. The label is 180 units tall, so the viewport scale (1:100) or the text height is what to change - not this label alone",
+      "affected_texts": 8
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "26E",
+      "layer": "A-TEXT",
+      "text": "DP1",
+      "box": [
+        15650.0,
+        17219.663,
+        15850.0,
+        17580.337
+      ],
+      "style": "CN",
+      "at": [
+        15750.0,
+        17400.0
+      ],
+      "note": "6 text(s) print at 2 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm. The label is 200 units tall, so the viewport scale (1:100) or the text height is what to change - not this label alone",
+      "affected_texts": 6
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "238",
+      "layer": "A-TEXT",
+      "text": "热通道",
+      "box": [
+        23849.306,
+        33239.607,
+        24150.694,
+        34160.393
+      ],
+      "style": "CN",
+      "at": [
+        24000.0,
+        33700.0
+      ],
+      "note": "3 text(s) print at 2.2 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm. The label is 220 units tall, so the viewport scale (1:100) or the text height is what to change - not this label alone",
+      "affected_texts": 3
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "236",
+      "layer": "A-TEXT",
+      "text": "封闭冷通道",
+      "box": [
+        23841.792,
+        30486.601,
+        24158.208,
+        32113.399
+      ],
+      "style": "CN",
+      "at": [
+        24000.0,
+        31300.0
+      ],
+      "note": "2 text(s) print at 2.3 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm. The label is 230 units tall, so the viewport scale (1:100) or the text height is what to change - not this label alone",
+      "affected_texts": 2
     }
   ],
   "by_kind": {
-    "text_text": 0,
-    "text_curve": 1,
+    "text_text": 2,
+    "text_curve": 4,
     "text_scale": 0,
     "text_hidden": 0,
-    "text_duplicate": 2,
-    "text_illegible": 0,
-    "text_glyphless": 1
+    "text_duplicate": 0,
+    "text_illegible": 6,
+    "text_glyphless": 0
   },
   "not_checked": [],
   "skipped_types": [

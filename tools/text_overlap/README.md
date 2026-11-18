@@ -52,6 +52,20 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 和内容推出来，所以必须印出来。DXF 里属性缺席即等于 `Standard`，`_style_of()` 负责补
 这个默认值。
 
+**一条不等于一行字。** `text_scale` / `text_hidden` / `text_illegible` /
+`text_glyphless` 是分组检查，同类问题压成一条。摘要因此按实际文字数报：
+
+```
+12 finding(s): 2 text-on-text, 4 text-on-geometry, 6 too small on paper (129 texts)
+```
+
+`Finding.affected` 就是这个组覆盖的文字数，JSON 里为 `affected_texts`（仅 ≠1 时输出）。
+实测 `gpu_dc_100.dxf`：6 条 illegible 覆盖 129 个文字（占全图 40%）。
+
+`text_curve` 的 `note` 会写**穿入深度**——最严重那条曲线在完整文字框内的裁切长度
+占字高的百分比。100% 表示整条切断，20% 以下只是蹭边。判定用内缩 5% 的核心区，
+度量用完整框，两者用途不同。
+
 **块、表格、标注里的文字都会被读**，不再跳过：
 
 - 块引用会展开（含嵌套，最深 8 层），变换矩阵逐层应用
@@ -88,7 +102,7 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 ## 验收
 
 ```bash
-# 不需要 AutoCAD（27 个函数 / 75 条断言）
+# 不需要 AutoCAD（29 个函数 / 82 条断言）
 python tools/text_overlap/tests_overlap.py
 
 # 需要 AutoCAD 在运行

@@ -146,6 +146,11 @@ class Finding:
     #: and the style is not visible from layer + text alone.
     style: str = ""
     with_style: str | None = None
+    #: How many texts this one row stands for. Grouped checks (``text_scale``,
+    #: ``text_illegible``, ``text_glyphless``, ``text_hidden``) collapse a whole
+    #: class of texts into one row, so counting rows understates the damage -
+    #: measured on ``gpu_dc_100.dxf``: 6 illegible rows are 129 texts.
+    affected: int = 1
     with_handle: str | None = None
     with_kind: str | None = None
     with_layer: str | None = None
@@ -186,6 +191,8 @@ class Finding:
             out["at"] = [round(self.where[0], 3), round(self.where[1], 3)]
         if self.note:
             out["note"] = self.note
+        if self.affected != 1:
+            out["affected_texts"] = self.affected
         if self.fix:
             out["fix"] = self.fix
         return out
@@ -847,6 +854,7 @@ def _scale_findings(texts: list[_Text]) -> list[Finding]:
                 handle=first.origin,
                 layer=first.layer,
                 style=first.style,
+                affected=len(group),
                 text=first.text,
                 box=first.box,
                 with_kind=kind,
@@ -978,6 +986,13 @@ def _text_curve(
         core = _inset(text.box, CORE_INSET)
         suppress = own.get(str(text.entity.dxf.handle), frozenset()) if text.via is None else frozenset()
         hits = []
+        # How far the worst curve runs *inside* the full text box, as a share of
+        # the text's own height. A rule grazing the top edge and one cutting the
+        # label in half are both "a curve crosses this text", but a reader has to
+        # treat them differently - measured on
+        # `telecom_equipment_room_plan.dxf`, where one crossing runs 100% of the
+        # height (the label is cut clean through) and another 40%.
+        deepest = 0.0
         for entity, segments, via in curves:
             # A text never collides with the entity it is drawn by, nor with a
             # dimension's own arrows and lines.
@@ -986,9 +1001,15 @@ def _text_curve(
             if str(entity.dxf.handle) in suppress:
                 continue
             for segment in segments:
-                if _clip(segment, core) is not None:
-                    hits.append((entity, via))
-                    break
+                if _clip(segment, core) is None:
+                    continue
+                hits.append((entity, via))
+                full = _clip(segment, text.box)
+                if full is not None:
+                    (xa, ya), (xb, yb) = segment
+                    length = math.hypot(xb - xa, yb - ya)
+                    deepest = max(deepest, length * (full[1] - full[0]))
+                break
         if not hits:
             continue
         # One finding per text, naming the first curve and how many others.
@@ -1018,6 +1039,12 @@ def _text_curve(
                 via=text.via,
             )
         )
+        height = text.box[3] - text.box[1]
+        if height > 0:
+            findings[-1].note += (
+                f"; the worst one runs {deepest / height * 100:.0f}% of the "
+                f"text height inside the box"
+            )
     return findings, skipped
 
 
@@ -1090,6 +1117,7 @@ def _style_glyph_findings(space, texts: list[_Text]) -> list[Finding]:
                 handle=first.origin,
                 layer=first.layer,
                 style=style_name,
+                affected=len(group),
                 text=first.text,
                 box=first.box,
                 where=(
@@ -1145,6 +1173,7 @@ def _visibility_findings(space, texts: list[_Text]) -> list[Finding]:
                 handle=first.origin,
                 layer=layer,
                 style=first.style,
+                affected=len(group),
                 text=first.text,
                 box=first.box,
                 where=(
@@ -1319,6 +1348,7 @@ def _legibility_findings(space, texts: list[_Text]) -> list[Finding]:
                 handle=first.origin,
                 layer=first.layer,
                 style=first.style,
+                affected=len(group),
                 text=first.text,
                 box=first.box,
                 where=(
@@ -1328,7 +1358,10 @@ def _legibility_findings(space, texts: list[_Text]) -> list[Finding]:
                 note=(
                     f"{len(group)} text(s) print at {on_paper:g} mm on layout "
                     f"{layout!r}; ISO 3098 sets the minimum at "
-                    f"{ISO_3098_MIN_TEXT_MM:g} mm"
+                    f"{ISO_3098_MIN_TEXT_MM:g} mm. The label is "
+                    f"{first.natural_height or 0:g} units tall, so the "
+                    f"viewport scale (1:{model_per_paper:g}) or the text height "
+                    f"is what to change - not this label alone"
                 ),
             )
         )

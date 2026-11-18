@@ -39,21 +39,29 @@ def _human(report: dict) -> str:
     ]
     findings = report["findings"]
     counts = report["by_kind"]
-    parts = []
-    if counts["text_text"]:
-        parts.append(f"{counts['text_text']} text-on-text")
-    if counts["text_curve"]:
-        parts.append(f"{counts['text_curve']} text-on-geometry")
-    if counts["text_scale"]:
-        parts.append(f"{counts['text_scale']} off-scale")
-    if counts["text_hidden"]:
-        parts.append(f"{counts['text_hidden']} on hidden layers")
-    if counts["text_duplicate"]:
-        parts.append(f"{counts['text_duplicate']} duplicate")
-    if counts["text_illegible"]:
-        parts.append(f"{counts['text_illegible']} too small on paper")
-    if counts["text_glyphless"]:
-        parts.append(f"{counts['text_glyphless']} with unplottable glyphs")
+    # A grouped finding (text_scale / text_illegible / text_glyphless /
+    # text_hidden) is one row for many texts. Counting rows alone understates the
+    # damage: `gpu_dc_100.dxf` has 6 illegible rows covering 129 texts, and
+    # "6 too small" reads as six labels.
+
+    def label(key: str, text: str) -> str:
+        rows = counts[key]
+        if not rows:
+            return ""
+        group = sum(f.get("affected_texts", 1) for f in findings if f["kind"] == key)
+        if group > rows:
+            return f"{rows} {text} ({group} texts)"
+        return f"{rows} {text}"
+
+    parts = [part for part in (
+        label("text_text", "text-on-text"),
+        label("text_curve", "text-on-geometry"),
+        label("text_scale", "off-scale"),
+        label("text_hidden", "on hidden layers"),
+        label("text_duplicate", "duplicate"),
+        label("text_illegible", "too small on paper"),
+        label("text_glyphless", "with unplottable glyphs"),
+    ) if part]
     # Every kind `detect()` knows about must appear here, or a finding count
     # silently disappears from the summary while still being in the list.
     listed = sum(counts[kind] for kind in (

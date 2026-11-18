@@ -40,7 +40,7 @@ cd D:/git_codes/test_Autocad_MCP
 D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe tools/text_overlap/tests_overlap.py
 ```
 
-**27 test functions / 75 assertions, none needing AutoCAD.** They cover the
+**29 test functions / 82 assertions, none needing AutoCAD.** They cover the
 error paths, every entity type read, blocks (rotated / nested / non-uniform),
 tables, dimensions, multileaders, and the regression tests for the bugs listed
 in [pitfalls.md](pitfalls.md).
@@ -68,6 +68,8 @@ assertion, so the failing clause is named, not counted.
 | `test_glyphless_style_is_reported` | an SHX style with `²` is reported once per style, ASCII in the same style is silent, TrueType is silent, and an SHX style **with a big font** is silent. |
 | `test_duplicate_pair_is_reported_once` | a coincident pair yields one `text_duplicate` row and **no** `text_text` row, while two different texts overlapping still yield `text_text`. |
 | `test_block_text_says_why_it_has_no_fix` | a collision inside a block offers no `entity_move` and says to edit the block definition instead. |
+| `test_summary_counts_texts_not_rows` | a grouped finding carries `affected_texts`, so the summary can say "3 texts" for one row. |
+| `test_curve_penetration_is_reported` | a line cutting through the middle reports 100%; a shallow graze is not reported as one. |
 | `test_near_miss_is_quiet` | the 15% threshold must not fire on a well-spaced pair. |
 
 ## Verifying against AutoCAD
