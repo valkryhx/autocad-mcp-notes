@@ -38,6 +38,7 @@
 | 2026-11-18 | [`20261118-pdf-plot-fixes.md`](20261118-pdf-plot-fixes.md) | PDF 出图三大坑（三个独立根因）：①中文乱码 = `.ttc` 集合字体无法嵌入 PDF，字形被炸成线条；②版面裁切 = A1 可打印区仅 831×560 而图框按 841×594；③`PlotType`/`PlotRotation` 枚举用错（**0=横向**）导致内容只画到 698mm。最终方案：**图纸空间满幅视口 + `plot_area="layout"` + `scale="1:1"`** | ✅ 已解决 |
 | 2026-11-18 | [`20261118-lisp-stale-result.md`](20261118-lisp-stale-result.md) | **`system_run_lisp` 返回值不可靠**：表达式出错时返回**上一次调用**的结果，验证会莫名"通过"。根因 `USERS1` 是跨调用持久变量，LISP 出错中止 form 使最外层 `setvar` 未执行。含三步闭环实验。**已修上游源码**（哨兵 + `vl-catch-all-apply`，新增 `LispRuntimeError`/`LispNotExecutedError`，4 个回归测试），上游 [PR #29](https://github.com/U-C4N/Autocad-MCP/pull/29) | ✅ 已修复并提交上游 |
 | 2026-11-18 | [`20261118-table-cell-cjk-and-alignment.md`](20261118-table-cell-cjk-and-alignment.md) | **原生 TABLE 两处缺陷**：①单元格默认顶部对齐（实测偏 600 = 半行高）；②**单元格不跟随 `AcDbText.StyleName`，走 `SetCellTextStyle`**，`AddTable` 全放 `Standard`(txt.shx) 使中文与 `m²`/`Ø` 画成空白。MCP 已改为检测非 ASCII 自动指向 CJK 样式（复用或建 `MCP-CJK`），ASCII 表行为不变、无字体时仅警告不失败。含几何级居中验证（11 格偏差 +0.0）。上游 [PR #30](https://github.com/U-C4N/Autocad-MCP/pull/30) | ✅ 已修复并提交上游 |
+| 2026-11-18 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | **文字交叠检查**：ezdxf 能做，但**不能用自带 bbox**——组码 41=0 表示「不换行」，ezdxf 传成宽度 0 给 `text_wrap` 导致每个词切一行，框大出 6.8 倍。另 7 个坑：AutoCAD 返回**字形墨迹框**而非 advance 宽、字体**全路径名**让 ezdxf 静默退化 33%、`total_height`/`baseline` 在部分字体退化、行距是 **5/3 字高**、attachment 7-9 方向相反、字体宽度需按字体标定 2.89%、msyh 无法标定。产物 `tools/text_overlap/` + `skills/autocad-text-overlap-check/`，三项验收通过：干净图 0 误报 / 植入 6 类全检出 / 9 对齐点 ≤2.89 单位；310 个真实 MTEXT 中 89%≤3%、97%≤5% | ✅ 已实现并验收 |
 
 ---
 
@@ -89,6 +90,19 @@
 | **表格单元格中文空白**（标题正常、格子全空） | [`20261118-table-cell-cjk-and-alignment.md`](20261118-table-cell-cjk-and-alignment.md) | 2.2 根因：单元格走 `SetCellTextStyle` 而非实体样式 / 3.2 自动 CJK |
 | 表格单元格文字偏上、不居中 | [`20261118-table-cell-cjk-and-alignment.md`](20261118-table-cell-cjk-and-alignment.md) | 2.1 默认 acTopLeft / 3.1 `SetCellAlignment(r,c,5)` |
 | 给单元格设 `StyleName` 无效 | [`20261118-table-cell-cjk-and-alignment.md`](20261118-table-cell-cjk-and-alignment.md) | 2.2 必须用 `SetCellTextStyle(row, col, 名)` |
+| **`ezdxf.bbox` 量 MTEXT 框大出数倍、凭空报文字重叠** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因一：组码 41=0 被当成换行宽度，每词切一行 |
+| 文字框宽度比 AutoCAD 小 33% 且不报错 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因三：字体名是完整路径，ezdxf 解析出退化度量 |
+| `font.measurements.total_height` 换字体就不一致 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因四：从字形轮廓量 `A`，恒等于 char_height |
+| MTEXT 多行高度少算 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因五：行距是 **5/3 字高**（3-on-5） |
+| MTEXT 底对齐（attachment 7-9）位置偏低一字高 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因六：1-3 顶 / 4-6 中 / 7-9 底，必须比绝对坐标 |
+| `accoreconsole` 跑 LISP 没反应、卡在 `命令:` | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 4 验证方法末段：本机未授权，改走 COM |
+| `SaveAs("x.dxf")` 得到 `x.dxf.dwg` | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 4 验证方法：显式 `SaveAs(path, 61)` |
+| 想让工具自动检查图中文字有没有交叠 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 3 处理：`python -m tools.text_overlap FILE.dxf` |
+| **块内文字角度错了：65° 量成 110°** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十（**已更正**）：`transform()` 保留旋转，是测量代码又补一次；只有 TEXT 暴露 |
+| 非均匀缩放 / 镜像的块，文字框怎么算都不对 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十末段：平行四边形，报 `not_checked`，别给近似值 |
+| 表格合并后单元格文字位置会错吗 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十五：**不会**，`*T` 块已反映合并结果，15→13 格实测 |
+| **出图后文字小到看不清，模型里看着没问题** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十六：`text_illegible`，按视口 `view_height/height` 折算纸面毫米，下限 ISO 3098 的 2.5 mm |
+| 写 DXF 检查脚本报 `'gbk' codec can't encode character '\xb2'` | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 3 末尾：`sys.stdout.reconfigure(encoding="utf-8", errors="replace")`，检查已成功死在打印上 |
 
 ---
 

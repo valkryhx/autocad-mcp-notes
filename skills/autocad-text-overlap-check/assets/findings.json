@@ -1,0 +1,337 @@
+{
+  "path": "draw_test/gpu_dc_100.dxf",
+  "layout": "Model",
+  "texts_measured": 319,
+  "texts_total": 310,
+  "texts_in_blocks": 0,
+  "dimensions": 9,
+  "texts_from_dimensions": 9,
+  "containers": 0,
+  "curves": 377,
+  "findings": [
+    {
+      "kind": "text_text",
+      "handle": "D7",
+      "layer": "A-TEXT",
+      "text": "C",
+      "box": [
+        12386.405,
+        23957.688,
+        12633.595,
+        24362.312
+      ],
+      "with": {
+        "handle": "D2",
+        "type": "text",
+        "layer": "A-TEXT",
+        "text": "B"
+      },
+      "overlap_ratio": 0.4058,
+      "at": [
+        12510.0,
+        24038.844
+      ],
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "D7",
+          "dx": 286.5,
+          "dy": 0.0
+        },
+        "clears": "D2",
+        "moves": "286.50 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_text",
+      "handle": "D9",
+      "layer": "A-TEXT",
+      "text": "C",
+      "box": [
+        35366.405,
+        23957.688,
+        35613.595,
+        24362.312
+      ],
+      "with": {
+        "handle": "D4",
+        "type": "text",
+        "layer": "A-TEXT",
+        "text": "B"
+      },
+      "overlap_ratio": 0.4058,
+      "at": [
+        35490.0,
+        24038.844
+      ],
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "D9",
+          "dx": 286.5,
+          "dy": 0.0
+        },
+        "clears": "D4",
+        "moves": "286.50 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "252",
+      "layer": "A-TEXT",
+      "text": "CRAC-5",
+      "box": [
+        26972.191,
+        27327.399,
+        28227.809,
+        27632.601
+      ],
+      "with": {
+        "handle": "C1",
+        "type": "LINE",
+        "layer": "A-AXIS",
+        "text": null
+      },
+      "at": [
+        27600.0,
+        27480.0
+      ],
+      "note": "LINE crosses this text",
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "252",
+          "dx": 484.529,
+          "dy": 0.0
+        },
+        "clears": "C1",
+        "moves": "484.53 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "253",
+      "layer": "A-TEXT",
+      "text": "GPU 智算机房",
+      "box": [
+        20973.708,
+        27750.491,
+        24626.292,
+        28349.509
+      ],
+      "with": {
+        "handle": "BC",
+        "type": "LINE",
+        "layer": "A-AXIS",
+        "text": null
+      },
+      "at": [
+        22800.0,
+        28050.0
+      ],
+      "note": "LINE crosses this text",
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "253",
+          "dx": 324.392,
+          "dy": 0.0
+        },
+        "clears": "BC",
+        "moves": "324.39 drawing units right",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "254",
+      "layer": "A-TEXT",
+      "text": "288.0 m²     100 柜 × 12 kW",
+      "box": [
+        19786.77,
+        27231.416,
+        25813.23,
+        27608.584
+      ],
+      "with": {
+        "handle": "BC",
+        "type": "LINE",
+        "layer": "A-AXIS",
+        "text": null
+      },
+      "at": [
+        22800.0,
+        27420.0
+      ],
+      "note": "LINE crosses this text",
+      "fix": {
+        "tool": null,
+        "note": "no short shift clears this text - something is on every side of it. Move or shorten whatever crosses it, or resize the text"
+      }
+    },
+    {
+      "kind": "text_curve",
+      "handle": "28C",
+      "layer": "A-TEXT",
+      "text": "监控大屏 4×4",
+      "box": [
+        29330.337,
+        23249.942,
+        31369.663,
+        23550.058
+      ],
+      "with": {
+        "handle": "B5",
+        "type": "LINE",
+        "layer": "A-DOOR",
+        "text": null
+      },
+      "at": [
+        30350.0,
+        23400.0
+      ],
+      "note": "2 curve(s) cross this text",
+      "fix": {
+        "tool": "entity_move",
+        "args": {
+          "handle": "28C",
+          "dx": 0.0,
+          "dy": -636.794
+        },
+        "clears": "B5",
+        "moves": "636.79 drawing units down",
+        "verified": "tested against every other text box and every curve in this drawing: this shift collides with none of them",
+        "note": "one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change"
+      }
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "21B",
+      "layer": "A-TEXT",
+      "text": "列头柜",
+      "box": [
+        22997.688,
+        29486.517,
+        23202.312,
+        30113.483
+      ],
+      "at": [
+        23100.0,
+        29800.0
+      ],
+      "note": "10 text(s) print at 1.5 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm"
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "E6",
+      "layer": "A-TEXT",
+      "text": "01",
+      "box": [
+        17011.91,
+        29716.763,
+        17188.09,
+        29883.237
+      ],
+      "at": [
+        17100.0,
+        29800.0
+      ],
+      "note": "100 text(s) print at 1.6 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm"
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "25E",
+      "layer": "A-TEXT",
+      "text": "AP1",
+      "box": [
+        15010.0,
+        14333.652,
+        15190.0,
+        14666.348
+      ],
+      "at": [
+        15100.0,
+        14500.0
+      ],
+      "note": "8 text(s) print at 1.8 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm"
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "26E",
+      "layer": "A-TEXT",
+      "text": "DP1",
+      "box": [
+        15650.0,
+        17219.663,
+        15850.0,
+        17580.337
+      ],
+      "at": [
+        15750.0,
+        17400.0
+      ],
+      "note": "6 text(s) print at 2 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm"
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "238",
+      "layer": "A-TEXT",
+      "text": "热通道",
+      "box": [
+        23849.306,
+        33239.607,
+        24150.694,
+        34160.393
+      ],
+      "at": [
+        24000.0,
+        33700.0
+      ],
+      "note": "3 text(s) print at 2.2 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm"
+    },
+    {
+      "kind": "text_illegible",
+      "handle": "236",
+      "layer": "A-TEXT",
+      "text": "封闭冷通道",
+      "box": [
+        23841.792,
+        30486.601,
+        24158.208,
+        32113.399
+      ],
+      "at": [
+        24000.0,
+        31300.0
+      ],
+      "note": "2 text(s) print at 2.3 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm"
+    }
+  ],
+  "by_kind": {
+    "text_text": 2,
+    "text_curve": 4,
+    "text_scale": 0,
+    "text_hidden": 0,
+    "text_duplicate": 0,
+    "text_illegible": 6
+  },
+  "not_checked": [],
+  "skipped_types": [
+    "DIMENSION",
+    "HATCH",
+    "INSERT",
+    "LEADER",
+    "POINT",
+    "SOLID",
+    "TABLE",
+    "TRACE",
+    "VIEWPORT"
+  ]
+}

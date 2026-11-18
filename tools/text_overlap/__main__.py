@@ -1,0 +1,163 @@
+"""Command line for the text-overlap check.
+
+    python -m tools.text_overlap FILE.dxf [--layout Layout1] [--json] [--quiet]
+
+Exit codes: 0 = no overlap found, 1 = overlaps found, 2 = could not read the
+file. This is what the ``autocad-text-overlap-check`` skill calls.
+
+``--json`` writes the report to stdout so a caller can act on handles; the
+human form groups the findings and prints one line per collision.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+from .overlap import detect
+
+#: A Chinese Windows console is GBK, which cannot encode `²`, `Ø` or `±` — every
+#: one of which appears in real drawing text. Printing a report then died with
+#: `UnicodeEncodeError: 'gbk' codec can't encode character '\xb2'` *after* the
+#: check had already succeeded, turning a good result into a crash. Re-encode
+#: the streams as UTF-8 and, if the terminal still cannot show a glyph, print a
+#: replacement rather than lose the whole report.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):  # pragma: no cover - redirected streams
+        pass
+
+
+def _human(report: dict) -> str:
+    lines = [
+        f"{report['path']}  [{report['layout']}]",
+        f"  measured {report['texts_measured']} text entities "
+        f"({report['texts_total']} in the space, {report['texts_in_blocks']} from "
+        f"{report['containers']} block/table container(s)), {report['curves']} curves",
+    ]
+    findings = report["findings"]
+    counts = report["by_kind"]
+    parts = []
+    if counts["text_text"]:
+        parts.append(f"{counts['text_text']} text-on-text")
+    if counts["text_curve"]:
+        parts.append(f"{counts['text_curve']} text-on-geometry")
+    if counts["text_scale"]:
+        parts.append(f"{counts['text_scale']} off-scale")
+    if counts["text_hidden"]:
+        parts.append(f"{counts['text_hidden']} on hidden layers")
+    if counts["text_duplicate"]:
+        parts.append(f"{counts['text_duplicate']} duplicate")
+    if counts["text_illegible"]:
+        parts.append(f"{counts['text_illegible']} too small on paper")
+    # Every kind `detect()` knows about must appear here, or a finding count
+    # silently disappears from the summary while still being in the list.
+    listed = sum(counts[kind] for kind in (
+        "text_text", "text_curve", "text_scale", "text_hidden",
+        "text_duplicate", "text_illegible",
+    ))
+    summary = ", ".join(parts) if parts else "all clean"
+    lines.append(f"  {len(findings)} finding(s): {summary}")
+    if listed != len(findings):
+        # A new kind was added to `detect()` and not to the summary above.
+        lines.append(f"  {len(findings) - listed} finding(s) of unsummarised kind(s)")
+    if report["not_checked"]:
+        lines.append(f"  not checked ({len(report['not_checked'])}):")
+        for reason in report["not_checked"][:10]:
+            lines.append(f"     - {reason}")
+        if len(report["not_checked"]) > 10:
+            lines.append(f"     ... and {len(report['not_checked']) - 10} more")
+    if not findings:
+        return "\n".join(lines)
+
+    lines.append("")
+    for index, finding in enumerate(findings, 1):
+        where = finding.get("at")
+        spot = f" at ({where[0]:.0f}, {where[1]:.0f})" if where else ""
+        lines.append(f"  {index}. {finding['kind']}{spot}")
+        lines.append(f"     {finding['handle']} [{finding['layer']}] {_excerpt(finding['text'])}")
+        other = finding.get("with")
+        if other:
+            label = other["type"]
+            if other.get("text") is not None:
+                label += f" {_excerpt(other['text'])}"
+            lines.append(f"     crosses {other['handle']} [{other['layer']}] {label}")
+        if finding.get("overlap_ratio") is not None and finding["kind"] == "text_text":
+            lines.append(f"     overlap {finding['overlap_ratio'] * 100:.0f}% of the smaller box")
+        if finding.get("in_block"):
+            lines.append(f"     text is inside block reference {finding['in_block']}")
+        if finding.get("note"):
+            lines.append(f"     note: {finding['note']}")
+        fix = finding.get("fix")
+        if fix:
+            if fix.get("tool") == "entity_move":
+                args = fix["args"]
+                lines.append(
+                    f"     fix: entity_move(handle={args['handle']!r}, "
+                    f"dx={args['dx']}, dy={args['dy']})  -> {fix['moves']}"
+                )
+                if fix.get("verified"):
+                    lines.append(f"          verified: {fix['verified']}")
+                if fix.get("note"):
+                    lines.append(f"          {fix['note']}")
+            elif fix.get("note"):
+                lines.append(f"     no safe shift: {fix['note']}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def _excerpt(text: str, limit: int = 60) -> str:
+    flat = " ".join((text or "").split())
+    return flat if len(flat) <= limit else flat[: limit - 1] + "…"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="text-overlap",
+        description="Report text that overlaps other text or drawing geometry.",
+    )
+    parser.add_argument("path", help="a DXF file (DWG is not readable without ODA)")
+    parser.add_argument("--layout", default=None, help="layout name; default Model")
+    parser.add_argument("--json", action="store_true", help="write the report as JSON")
+    parser.add_argument(
+        "--quiet", action="store_true", help="exit code only, print nothing unless JSON"
+    )
+    parser.add_argument(
+        "--no-blocks",
+        action="store_true",
+        help="do not expand block references (their text is then reported as not checked)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        report = detect(args.path, layout=args.layout, expand_blocks=not args.no_blocks)
+    except FileNotFoundError:
+        print(f"error: no such file: {args.path}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        message = str(exc)
+        if args.path.lower().endswith(".dwg"):
+            print(
+                f"error: {args.path} is a DWG, which this check cannot read. "
+                "Save it as DXF first, in AutoCAD: SaveAs with AcSaveAsType 61 "
+                '(or `-m tools.text_overlap` after `drawing_save_as("*.dxf")`).',
+                file=sys.stderr,
+            )
+        else:
+            print(f"error: {message}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"error: could not read {args.path}: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
+
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    elif not args.quiet:
+        print(_human(report))
+    return 0 if not report["findings"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -42,7 +42,7 @@
 | ODA File Converter | **未安装**（DWG 写出的唯一途径，如需 DWG 导出再装） |
 | MCP 包 | `autocad-mcp-pro==1.8.0`（PyPI，由 `uvx` 自动拉取） |
 | MCP 配置位置 | `~/.claude.json` → `mcpServers.autocad` |
-| 技能位置 | `~/.claude/skills/autocad-mcp-premium/` |
+| 技能位置 | `~/.claude/skills/autocad-mcp-premium/`（绘图流程）、`~/.claude/skills/autocad-text-overlap-check/`（文字交叠检查，自带 `references/` 六篇 + `assets/`） |
 | 绘图工作目录 | 建议 `D:\git_codes\test_Autocad_MCP\draw_test\` |
 | 测试产物 | `flange_test.dxf/.dwg/.png`、`headless_test.dxf` |
 
@@ -353,6 +353,24 @@ drawing_verify_requirements(manifest_path=...)→ 复算哈希，确认无过期
 | 门「浮在墙上」/门洞没开口 | 墙按整条矩形画，门洞处没分段留空 | 墙必须**分段绘制**，门洞两侧画封口线；门扇 LINE 从铰点起、1/4 ARC **圆心=铰点**。见 [`docs/20261118-door-drawing.md`](docs/20261118-door-drawing.md) |
 | **中文数据/码点/样式全对，AutoCAD 里仍是乱码** | 文字样式字体是 `txt.shx`，无 CJK 字形，**静默失败不报错** | 建 TrueType 样式 `simsun.ttc`，并**逐个实体显式**指定 `style`；或直接把 `Standard` 改成 simsun.ttc。见 [`docs/20261118-chinese-text-dwg-fix.md`](docs/20261118-chinese-text-dwg-fix.md) |
 | **快照渲染截图里中文空白，但实际可能正常**（或反之） | `view_screenshot(region=...)` 走 `Document.Export` **快照渲染器，会丢弃文字** | **判断中文显示只认真实窗口截图 `view_zoom_and_screenshot()`**；ezdxf+matplotlib 渲染同样不可信（缺中文字体） |
+| **用 `ezdxf.bbox` 量 MTEXT，框高得离谱（6 倍以上）、凭空报出一堆文字重叠** | 组码 41 = `0.0` 表示**不换行**，ezdxf 却当成箱子宽度传给 `text_wrap`，于是**每个词切一行** | 别用 `ezdxf.bbox` 量 MTEXT。用 `tools/text_overlap/textbox.py::measure_text`（按字形轮廓 + 字体标定，误差 <3%）。详见 [`docs/20261118-text-overlap-check.md`](docs/20261118-text-overlap-check.md) |
+| **中文文字框宽度比 AutoCAD 小 33%，且不报错** | 样式字体名是**完整路径**（COM 赋值会写成 `C:\Windows\Fonts\simhei.ttf`），ezdxf 对这个名字解析出退化度量（`baseline=0`） | 喂给 `fonts.make_font` 前取 `os.path.basename`。两种写法都返回 `TrueTypeFont`，类型相同、不抛异常 |
+| **`font.measurements.total_height` / `baseline` 在不同字体间不一致** | 部分字体（尤其 `.ttc` 集合）该字段退化，msyh 甚至 `baseline=0` | 从字形轮廓量：`font.text_path('A').extents()` 的高度**恒等于 char_height** |
+| **MTEXT 多行高度少算**（2 行、3 行都偏小） | DXF 组码 44 缺省 / =1.0 时 AutoCAD 用「3-on-5」行距，即 **5/3 × 字高**，不是 1 倍 | `总高 = 单行墨迹高 + 字高 × 5/3 × (行数-1)`。实测 2 行@265=706.7、3 行@200=866.7，均精确吻合 |
+| **MTEXT 底对齐（attachment 7/8/9）位置偏低一个文字高度** | 1-3 顶对齐（框向下）、4-6 居中、7-9 底对齐（框**向上**） | 按三分法处理，别一律向下。只比宽高看不出来，必须比**绝对坐标** |
+| **块内/表格内文字没被检查，却报「0 文字 0 交叠」** | 只读空间里的直接实体；房间标签、设备编号实际都在块里 | INSERT 要展开（含嵌套），表格单元格在 `*T` 块里，经 `block_record_handle` 找。见 [`docs/20261118-text-overlap-check.md`](docs/20261118-text-overlap-check.md) 第二轮九/十二 |
+| **块内文字旋转角度错了**（65° 量成 110°） | `entity.transform(matrix)` **会**把参照的旋转折进实体（MTEXT 写 `text_direction`、TEXT 写 `rotation`）；错的是一般写法会在 `transform` 之后**再按矩阵补一次**，等于加两遍。MTEXT 因 `text_direction` 存在时 `rotation` 属性缺席而侥幸正确，**只有 TEXT 暴露** | `transform()` 之后直接用实体自身的旋转，不要再补。回归判据：65° 块里框的 h/w 应落在 1.4–2.2（110° 会到 2.75）。见 [`docs/20261118-text-overlap-check.md`](docs/20261118-text-overlap-check.md) 第十项（**已更正**） |
+| **非均匀缩放/镜像的块，文字框怎么算都不对** | 变换后是平行四边形，轴对齐框表达不了 | 报 `not_checked` 并写明原因，别给近似值 |
+| **`virtual_entities()` 读不到块的 ATTRIB** | 它只返回块内固定几何，不含每次插入不同的属性文字 | 改读 `insert.attribs`；其 `insert`/`rotation`/`height` **已在 WCS 且已缩放**，不要再套矩阵 |
+| **MULTILEADER 的文字读不到** | `explode()` 只返回 HATCH 和引线，`virtual_entities()` 也没有 | 从 `context.mtext.default_content` 取文本，`context.char_height × context.scale` 取字高；`GetBoundingBox` 对它同样不含文字（实测三种字高都返回 817×805） |
+| **表格单元格全叠在原点、报一堆假互压** | 用了单位矩阵，没应用表格自己的 `insert` | 矩阵 = `z_rotate(horizontal_direction 角度)` × `translate(insert)` |
+| **标注文字尺寸差 DIMSCALE 倍** | `*D` 块是混合单位：位置是图纸单位，箭头/间隙/字高是样式单位 | 作图字高 = `DIMTXT × DIMSCALE`，形状取块的墨迹框，中心对齐到 `text_midpoint` |
+| **标注文字小到看不见**（出图等于没标注） | `$DIMSCALE=1` 而 `$DIMTXT=2.5` | 检查项 `text_scale` 会报；见 `datacenter_plan_200558.dxf` 的 13 个标注 |
+| **`GetBoundingBox` 对 DIMENSION 量不到文字** | 它返回的是几何框（尺寸线+延长线），不含文字 | 实测 DIMTXT 2.5/25/125 × DIMSCALE 1/50/200 六种组合，框恒为 1000×203.1。要从 `*D` 块算 |
+| **写 DXF 检查脚本，报 `UnicodeEncodeError: 'gbk' codec can't encode character '\xb2'`** | 中文 Windows 控制台是 GBK，`²`/`Ø`/`±`/`°` 都编码不了。检查**已经成功**，死在打印上，结果整个丢掉 | 程序开头 `sys.stdout.reconfigure(encoding="utf-8", errors="replace")`（`stderr` 同样处理）。别靠改终端代码页 |
+| **`accoreconsole` 跑 LISP 脚本没反应，一直卡在 `命令:` 提示符** | 本机 accoreconsole 返回 `Version W.60.0.0` 并提示「未授权、运行于评估模式」，**LISP 不执行**；`timeout` 退出码 124 | 改用运行中的 AutoCAD + COM（`win32com.client.Dispatch('AutoCAD.Application')`）。要 DXF 就 `SaveAs(path, 61)`，**不带第二个参数会强行写成 .dwg** |
+| **`SaveAs("x.dxf")` 结果得到 `x.dxf.dwg`** | 未指定 `AcSaveAsType` 时 AutoCAD 按扩展名自己判断并追加 | 显式传类型：`doc.SaveAs(path, 61)`（ac2013_dxf） |
+| **样式字体设成短名 `simhei.ttf` 报「文件处理器错误」** | COM 要求字体的**完整路径** | `style.fontFile = r"C:\Windows\Fonts\simhei.ttf"`；短名写入后 DXF 里 font 字段为空 |
 | 在 AutoCAD 里开了两个同名 DWG、`document_close` 报 ambiguous | `drawing_save_as` 与 `drawing_open` 各开一个 | LISP 关多余的：`(vla-Close (vla-Item (vla-get-Documents (vlax-get-acad-object)) N) :vlax-false)` |
 | **PDF 里中文变 `???` 或乱码**（DWG 内正常） | 文字样式用了 `.ttc` 集合字体（`simsun.ttc`），PDF 无法嵌入，字形被炸成几何线条（PDF 里 `Tj` 指令为 0） | 改用**单体 `.ttf`**：`simhei.ttf` / `simkai.ttf` / `simfang.ttf`。验证：`BaseFont` 应出现 `SimHei`，`Tj` 数 > 0 |
 | **PDF 右侧被裁掉**、标题栏文字缺失 | A1 可打印区只有 831×560（边距 17/17/5/5），图框按 841×594 画必然溢出 | 图框缩到可打印区内（如 820×555）；`page_setup_apply` 返回的 `margins_mm` 就是依据 |
@@ -433,6 +451,8 @@ claude mcp list | grep autocad      # 应显示 ✔ Connected
 | 2026-11-18 | [`docs/20261118-pdf-plot-fixes.md`](docs/20261118-pdf-plot-fixes.md) | **PDF 出图三大坑**（三个独立根因）：①中文乱码 = `simsun.ttc` 集合字体无法嵌入 PDF，文字被炸成几何线条（`Tj` 指令为 0），换 `simhei.ttf` 解决；②版面裁切 = A1 可打印区只有 831×560（边距 17/17/5/5）而图框按 841×594 画；③`PlotType`/`PlotRotation` 枚举用错（**0=横向**），导致内容只画到 698mm。最终方案：**图纸空间满幅视口 + `plot_area="layout"` + `scale="1:1"`**，比例由视口 `view_height/height` 精确控制 |
 | 2026-11-18 | [`docs/20261118-lisp-stale-result.md`](docs/20261118-lisp-stale-result.md) | **`system_run_lisp` 返回值不可靠**：表达式出错时返回**上一次调用**的结果。根因 `USERS1` 是跨调用持久变量，LISP 出错会中止整个 form，最外层 `setvar` 未执行，读到的是残留值。含三步闭环实验证据。**已修上游源码**（哨兵 + `vl-catch-all-apply`，新增 `LispRuntimeError`/`LispNotExecutedError`），**上游 PR [#29](https://github.com/U-C4N/Autocad-MCP/pull/29)** |
 | 2026-11-18 | [`docs/20261118-table-cell-cjk-and-alignment.md`](docs/20261118-table-cell-cjk-and-alignment.md) | **原生 TABLE 两处缺陷**：①单元格默认顶部对齐（`SetCellAlignment(r,c,5)` 修复）；②**单元格不跟随 `AcDbText.StyleName`，走 `SetCellTextStyle`**，`AddTable` 全放 `Standard`(txt.shx) 导致中文与 `m²`/`Ø` 空白。MCP 侧已改为自动检测非 ASCII 并指向 CJK 样式（复用已有或建 `MCP-CJK`），ASCII 表行为不变。含几何级居中验证（11 格偏差 +0.0）。**上游 PR [#30](https://github.com/U-C4N/Autocad-MCP/pull/30)** |
+| 2026-11-18 | [`docs/20261118-text-overlap-check.md`](docs/20261118-text-overlap-check.md) | **文字交叠检查工具**：ezdxf 能做，但**不能用它自带的 bbox**——组码 41=0 表示「不换行」，ezdxf 却当成宽度 0 传给 `text_wrap`，导致每个词切一行，框大出 6.8 倍。另有 7 个坑：AutoCAD 返回字形墨迹框而非 advance 宽、字体全路径名让 ezdxf 静默退化 33%、`total_height` 不可靠、行距是 5/3 字高、attachment 7-9 方向、字体宽度标定、msyh 测不准。产物 `tools/text_overlap/` + `skills/autocad-text-overlap-check/`。**第二轮补齐块内文字（含嵌套/旋转）、ATTRIB、表格单元格、标注文字，并新增 `text_scale` 尺度检查**（又踩 5 个坑：`virtual_entities()` 不含 ATTRIB、表格在 `*T` 块、`*D` 块混用单位、`GetBoundingBox` 对标注不含文字）。**第三轮补三个盲区**：TEXT 在旋转块里被重复加一次旋转（原「`transform()` 丢旋转」结论**已更正**——它保留旋转，是测量代码加了两遍，只有 TEXT 暴露）、合并单元格经实测**不是盲区**（AutoCAD 的 `*T` 块已反映合并结果）、新增 `text_illegible` 按视口比例折算纸面毫米并与真实 PDF 交叉验证。另修两个自造 bug：GBK 控制台打 `²` 崩溃、摘要漏掉新 kind。验收：干净图 0 误报 / 植入 6 类全检出 / 9 对齐点 ≤2.89 单位 / **24 个测试函数 60 条断言**全过 / 310 个真实 MTEXT 精度无回归。技能已重构为 `SKILL.md` + `references/`（reading-a-finding / what-not-to-fix / accuracy / pitfalls / verification / layout）+ `assets/` 的目录结构 |
+| 2026-11-18 | [`docs/20261118-text-overlap-guide.md`](docs/20261118-text-overlap-guide.md) | **文字交叠检查的新手操作手册**：报告怎么读、`fix` 怎么执行（三种方式）、`no safe shift` 是什么意思、`text_scale` 为什么是 DIMSCALE 没设、`text_illegible` 怎么按纸面尺寸判断、哪些压线不用改、改完必须重跑。配合 `tools/text_overlap/` 与 `skills/autocad-text-overlap-check/` | ✅ 已交付 |
 
 > 新记录请按日期顺序追加到上表，并同步更新索引文件的「按症状检索」表。
 
