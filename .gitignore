@@ -1,0 +1,33 @@
+# AutoCAD 中间产物与本地环境
+*.bak
+*.bak[0-9]
+*.dwl
+*.dwl2
+*.sv$
+*.tmp
+
+# 调试脚本与临时输出（本项目只收录文档与成品）
+draw_test/*.py
+draw_test/*.png
+draw_test/*.txt
+draw_test/*.json
+draw_test/*.scr
+draw_test/*.dxf
+draw_test/*.dwg
+draw_test/*.pdf
+draw_test/**/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 内容为空的占位文件
+bug.md
