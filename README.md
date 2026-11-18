@@ -123,3 +123,7 @@ DWG 里显示正常，导出 PDF 全是问号。
 ## 许可
 
 文档以 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) 共享，脚本以 MIT 授权。
+
+欢迎补充自己的踩坑记录——判断标准只有一句：**下次遇到同样情况，这份记录能让人少走十分钟弯路吗？**
+
+具体格式与登记步骤见 [`CONTRIBUTING.md`](CONTRIBUTING.md)。
