@@ -40,12 +40,18 @@
 | 2026-11-18 | [`20261118-table-cell-cjk-and-alignment.md`](20261118-table-cell-cjk-and-alignment.md) | **原生 TABLE 两处缺陷**：①单元格默认顶部对齐（实测偏 600 = 半行高）；②**单元格不跟随 `AcDbText.StyleName`，走 `SetCellTextStyle`**，`AddTable` 全放 `Standard`(txt.shx) 使中文与 `m²`/`Ø` 画成空白。MCP 已改为检测非 ASCII 自动指向 CJK 样式（复用或建 `MCP-CJK`），ASCII 表行为不变、无字体时仅警告不失败。含几何级居中验证（11 格偏差 +0.0）。上游 [PR #30](https://github.com/U-C4N/Autocad-MCP/pull/30) | ✅ 已修复并提交上游 |
 | 2026-11-18 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | **文字交叠检查**：ezdxf 能做，但**不能用自带 bbox**——组码 41=0 表示「不换行」，ezdxf 传成宽度 0 给 `text_wrap` 导致每个词切一行，框大出 6.8 倍。另 7 个坑：AutoCAD 返回**字形墨迹框**而非 advance 宽、字体**全路径名**让 ezdxf 静默退化 33%、`total_height`/`baseline` 在部分字体退化、行距是 **5/3 字高**、attachment 7-9 方向相反、字体宽度需按字体标定 2.89%、msyh 无法标定。产物 `tools/text_overlap/` + `skills/autocad-text-overlap-check/`，三项验收通过：干净图 0 误报 / 植入 6 类全检出 / 9 对齐点 ≤2.89 单位；310 个真实 MTEXT 中 89%≤3%、97%≤5% | ✅ 已实现并验收 |
 
+| 2026-11-19 | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | **`PrintWindow` 截图把 AutoCAD COM 搞卡死**：GPU 合成导致截图全白，更致命的是 `WM_PRINT` 同步重绘请求打乱 AutoCAD 渲染线程 → COM 自动化服务器不可用（`<unknown>.Count`、`RPC_E_CALL_REJECTED`、`MK_E_UNAVAILABLE`），但进程还活着。`RPC_E_CALL_REJECTED` 的提示「等在命令提示符」有误导性，按 ESC 才有效。含**杀进程前如何用窗口标题 `*` 判断未保存文档**（COM 已失效时唯一可用手段）、`accoreconsole` 本机确认不可用、以及「让用户自己看图比自己造渲染可靠」的教训 | ✅ 已解决（按 ESC 恢复） |
+
 ---
 
 ## 按症状检索
 
 | 症状 | 文件 | 章节 |
 |---|---|---|
+| **`PrintWindow` 截图全白，随后 COM 全部失效** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 现象一/二/三、处理 1 |
+| **COM 报 `<unknown>.Count` 或 `MK_E_UNAVAILABLE`（操作无法使用）** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 根因、处理 1 |
+| **想 `taskkill` 但怕丢未保存文档** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 处理「杀进程前必须确认」 |
+| `accoreconsole` 带 `/s` 卡住 `exit=124`、提示「许可证无效」 | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 预防 5 |
 | COM 报 `-2147221164` / `REGDB_E_CLASSNOTREG` | [`20261117-autocad_mcp.md`](20261117-autocad_mcp.md) | 4.3 坑 1 |
 | `cad_batch` 报 `unexpected key(s) ['arguments']` | [`20261117-autocad_mcp.md`](20261117-autocad_mcp.md) | 4.3 坑 2 |
 | `describe_tool` 报 `Unknown tool: 'entity_create'` | [`20261117-autocad_mcp.md`](20261117-autocad_mcp.md) | 4.3 坑 3 |
