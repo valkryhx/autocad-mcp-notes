@@ -47,15 +47,49 @@ is involved.
 
 ## Acting on a `fix`
 
-The `fix` block is an `entity_move` call: which handle, and by how much.
+The `fix` block says exactly what to do. Four shapes:
+
+| `tool` | meaning |
+|---|---|
+| `entity_move` | shift one entity by `dx`, `dy` |
+| `cad_batch` | shift several entities by the **same** vector — a stacked label |
+| `entity_delete` | remove a duplicate |
+| absent, with a `note` | no move works, and the note says why |
 
 1. **Via the MCP tools** — tell the agent to move it, and it calls
-   `entity_move(handle='252', dx=0.0, dy=286.5)`.
+   `entity_move(handle='252', dx=0.0, dy=286.5)`, or runs the whole
+   `cad_batch` block for a stacked label.
 2. **By hand in AutoCAD** — select the text, `MOVE`, pick any base point, press
    `F8` for ortho, drag the direction, type the distance, Enter.
 3. **By editing the property** — `Ctrl+1`, add the delta to X or Y.
 
 Then **save, and run the check again on the saved file.**
+
+### A stacked label moves as one block
+
+Room labels are authored as separate entities stacked in a column — name,
+number, area. The tool recognises them (same layer and style, real horizontal
+overlap, vertically clear of each other, gap under one text height) and offers
+a `cad_batch` that moves every line by the same vector:
+
+```
+fix: cad_batch of 2 entity_move step(s), each dx=1145.09, dy=0.0
+     moves 8B ROOM NAME
+     moves 8C 288.0 m2
+```
+
+Run all the steps. Moving one line only would leave the label ragged.
+
+**When the label cannot move as a whole**, the fix for a single line says so:
+
+```
+fix: entity_move(handle='253', dx=324.392, dy=0.0)  -> 324.39 drawing units right
+     this line belongs to a 2-line label, but the label cannot move as a whole -
+     so only 253 moves and 254 stays put. Moving this line alone will leave the
+     label misaligned; shortening or re-laying-out the label is the better fix
+```
+
+Treat that as a prompt to re-lay-out the label, not as a one-click fix.
 
 ### Why the offered shift is trustworthy
 
@@ -65,16 +99,21 @@ Then **save, and run the check again on the saved file.**
   cleared its neighbour and dropped it onto a circle.
 - It is the **smallest** shift that works, searched outward from a fraction of
   the text's height. Offered shifts on the sample drawings run 286–920 units.
-- When no shift works it says so:
+- When no shift works it says so, and gives the reason that decides what to do:
 
 ```
-no safe shift: no short shift clears this text - something is on every side of it.
-Move or shorten whatever crosses it, or resize the text
+no safe shift: no shift can free this text: it is 6026 units wide and the
+widest free slot beside it is 1159. Shorten it or split it onto two lines
 ```
 
 That is not the tool giving up — it tested every direction and distance and
-found none clear. The answer is to move or shorten **the other thing**, or
-shorten the label.
+found none clear. **Read which reason you got**, because the fix differs:
+
+| reason | what it means | what to do |
+|---|---|---|
+| `... units wide and the widest free slot ... is N` | no translation can ever work; the text is wider than the space around it | shorten it, or split it onto two lines |
+| `no shift clears this text even when its whole N-line label moves together` | the label was already tried as a unit | move the thing crossing it, or resize the text |
+| `something is on every side of it` | genuinely boxed in | move or shorten whatever crosses it |
 
 ## Per-kind guidance
 

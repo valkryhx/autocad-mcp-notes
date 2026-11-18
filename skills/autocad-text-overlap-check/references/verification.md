@@ -40,7 +40,7 @@ cd D:/git_codes/test_Autocad_MCP
 D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe tools/text_overlap/tests_overlap.py
 ```
 
-**29 test functions / 82 assertions, none needing AutoCAD.** They cover the
+**33 test functions / 100 assertions, none needing AutoCAD.** They cover the
 error paths, every entity type read, blocks (rotated / nested / non-uniform),
 tables, dimensions, multileaders, and the regression tests for the bugs listed
 in [pitfalls.md](pitfalls.md).
@@ -70,6 +70,10 @@ assertion, so the failing clause is named, not counted.
 | `test_block_text_says_why_it_has_no_fix` | a collision inside a block offers no `entity_move` and says to edit the block definition instead. |
 | `test_summary_counts_texts_not_rows` | a grouped finding carries `affected_texts`, so the summary can say "3 texts" for one row. |
 | `test_curve_penetration_is_reported` | a line cutting through the middle reports 100%; a shallow graze is not reported as one. |
+| `test_stacked_label_moves_as_one` | a two-line label yields one `cad_batch` covering both handles with the same vector, and applying every step clears both findings. |
+| `test_overlapping_texts_are_not_grouped` | two texts that intersect each other are a collision, not a stack — the fix must not be a group move. |
+| `test_wide_text_says_to_split_it` | a text wider than every free slot beside it offers no move and says "shorten or split", carrying the measured numbers. |
+| `test_single_line_move_warns_about_misalignment` | when only one line of a label can move, the note names the line left behind and warns the label will be ragged. |
 | `test_near_miss_is_quiet` | the 15% threshold must not fire on a well-spaced pair. |
 
 ## Verifying against AutoCAD

@@ -32,13 +32,13 @@ drawings/gpu-datacenter/gpu_dc_100.dxf  [Model]
      note: LINE crosses this text; the worst one runs 100% of the text height inside the box
      fix: entity_move(handle='253', dx=324.392, dy=0.0)  -> 324.39 drawing units right
           verified: tested against every other text box and every curve in this drawing: this shift collides with none of them
-          one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change
+          this line belongs to a 2-line label, but the label cannot move as a whole - so only 253 moves and 254 stays put. Moving this line alone will leave the label misaligned; shortening or re-laying-out the label is the better fix
 
   5. text_curve at (22800, 27420)
      254 [A-TEXT] 288.0 m² 100 柜 × 12 kW [style CN]
      crosses BC [A-AXIS] LINE
      note: LINE crosses this text; the worst one runs 100% of the text height inside the box
-     no safe shift: no short shift clears this text - something is on every side of it. Move or shorten whatever crosses it, or resize the text
+     no safe shift: no shift can free this text: it is 6026 units wide and the widest free slot beside it is 1159. Shorten it or split it onto two lines
 
   6. text_curve at (30350, 23400)
      28C [A-TEXT] 监控大屏 4×4 [style CN]

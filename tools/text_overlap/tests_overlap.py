@@ -353,20 +353,35 @@ def test_fix_is_verified_safe() -> None:
         # may appear at the moved handle.
         path = os.path.join(tempfile.gettempdir(), "ov_fixsafe.dxf")
         d = ezdxf.readfile(path)
-        handle = fix["args"]["handle"]
-        entity = d.entitydb.get(handle)
-        if entity is None:
-            check(f"fix handle {handle} exists", False)
+        if fix["tool"] == "entity_move":
+            steps = [fix["args"]]
+        elif fix["tool"] == "cad_batch":
+            # A multi-line label moves as one `cad_batch` of `entity_move`
+            # steps; apply every step, then check each moved handle.
+            steps = [step["args"] for step in fix["args"]["steps"]]
+        else:
             continue
-        entity.translate(fix["args"]["dx"], fix["args"]["dy"], 0)
+        moved_handles = []
+        for args in steps:
+            handle = args["handle"]
+            entity = d.entitydb.get(handle)
+            if entity is None:
+                check(f"fix handle {handle} exists", False)
+                continue
+            entity.translate(args["dx"], args["dy"], 0)
+            moved_handles.append(handle)
         moved_path = os.path.join(tempfile.gettempdir(), "ov_fixsafe_moved.dxf")
         if os.path.exists(moved_path):
             os.remove(moved_path)
         d.saveas(moved_path)
         after = detect(moved_path)
-        still = [f for f in after["findings"] if f["handle"] == handle and f["kind"] in ("text_text", "text_curve")]
+        still = [
+            f
+            for f in after["findings"]
+            if f["handle"] in moved_handles and f["kind"] in ("text_text", "text_curve")
+        ]
         check(
-            f"{finding['kind']} {handle}: suggested shift clears it",
+            f"{finding['kind']} {','.join(moved_handles)}: suggested shift clears it",
             not still,
             str([(f["kind"], f.get("with", {}).get("handle")) for f in still]),
         )
@@ -812,6 +827,157 @@ def test_curve_penetration_is_reported() -> None:
         check("a graze below the core is not reported", True)
 
 
+def test_stacked_label_moves_as_one() -> None:
+    """A multi-line label is moved line by line in a single `cad_batch`.
+
+    A room label is several independent entities stacked in a column. Shifting
+    one line clears the collision but breaks the label's alignment, which is a
+    worse drawing than the override - so the offered fix moves the whole stack.
+
+    Measured need: `gpu_dc_100.dxf`, where the room name sits 141 units above
+    the area row on the same layer.
+    """
+    print("stacked label moves as one")
+    doc, msp = _new("")
+    for text, dy in (("ROOM NAME", 0.0), ("288.0 m2", -700.0)):
+        ent = msp.add_mtext(text, dxfattribs={"char_height": 400, "style": "CN"})
+        ent.dxf.attachment_point = 5
+        ent.dxf.insert = (2000.0, 2000.0 + dy)
+    msp.add_line((1700, 3000), (1700, 900))
+    report = detect(_save(doc, "ov_stack.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_curve"]
+    check("both lines are reported", len(rows) == 2, str(report["by_kind"]))
+    if rows:
+        fix = rows[0].get("fix") or {}
+        check("the fix is a cad_batch", fix.get("tool") == "cad_batch", str(fix.get("tool")))
+        steps = (fix.get("args") or {}).get("steps") or []
+        check("it moves both lines", len(steps) == 2, str(len(steps)))
+        handles = {step["args"]["handle"] for step in steps}
+        check("the two steps are the two lines", len(handles) == 2, str(handles))
+        offsets = {(step["args"]["dx"], step["args"]["dy"]) for step in steps}
+        check("both lines move by the same vector", len(offsets) == 1, str(offsets))
+
+        # Applying every step must clear both findings.
+        path = os.path.join(tempfile.gettempdir(), "ov_stack.dxf")
+        moved = ezdxf.readfile(path)
+        for step in steps:
+            entity = moved.entitydb.get(step["args"]["handle"])
+            entity.translate(step["args"]["dx"], step["args"]["dy"], 0)
+        out = os.path.join(tempfile.gettempdir(), "ov_stack_moved.dxf")
+        if os.path.exists(out):
+            os.remove(out)
+        moved.saveas(out)
+        after = detect(out)
+        check(
+            "after the batch both lines are clear",
+            after["by_kind"]["text_curve"] == 0,
+            str(after["by_kind"]),
+        )
+
+
+def test_overlapping_texts_are_not_grouped() -> None:
+    """Two texts that overlap each other are a collision, not a stack.
+
+    Grouping them would offer one 'fix' that shifts both by the same vector and
+    leaves the overlap untouched - measured on `planted.dxf`, where
+    `CRAC-01 40kW` and `精密空调` sit on top of each other.
+    """
+    print("overlapping texts are not one label")
+    doc, msp = _new("")
+    for text, dx, dy in (("CRAC-01", 0.0, 0.0), ("PRECISION", 40.0, -120.0)):
+        ent = msp.add_mtext(text, dxfattribs={"char_height": 200, "style": "CN"})
+        ent.dxf.attachment_point = 1
+        ent.dxf.insert = (dx, dy)
+    report = detect(_save(doc, "ov_overlap_group.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_text"]
+    check("the overlap is reported", len(rows) == 1, str(report["by_kind"]))
+    if rows:
+        fix = rows[0].get("fix") or {}
+        check(
+            "the fix is not a group move",
+            fix.get("tool") != "cad_batch",
+            str(fix.get("tool")),
+        )
+
+
+def test_wide_text_says_to_split_it() -> None:
+    """A text too wide for any free slot must say so, not 'boxed in'.
+
+    On `gpu_dc_100.dxf` the area row is 6026 units wide with 1159 units of free
+    space beside it; it needs 1916 units of travel to clear the axis, and the
+    labels either side block it well before that. The actionable advice is
+    'shorten or split', and the note must carry the numbers that justify it.
+
+    Uses the committed sample because the situation needs a real densely-packed
+    drawing - every synthesised attempt either left a workable vertical shift or
+    had no collision at all.
+    """
+    print("wide text is told to split")
+    source = os.path.abspath(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..",
+            "drawings", "gpu-datacenter", "gpu_dc_100.dxf",
+        )
+    )
+    if not os.path.exists(source):
+        check("the wide-text sample is present", False, f"missing {source}")
+        return
+    report = detect(source)
+    row = next(
+        (
+            f
+            for f in report["findings"]
+            if f["kind"] == "text_curve" and f["handle"] == "254"
+        ),
+        None,
+    )
+    check("the wide area row is reported", row is not None, str(report["by_kind"]))
+    if row is None:
+        return
+    fix = row.get("fix") or {}
+    note = fix.get("note", "")
+    check("no move is offered", fix.get("tool") is None, str(fix.get("tool")))
+    check("the note says to shorten or split", "split" in note, note)
+    check("the note gives the width", "units wide" in note, note)
+    check("the note gives the free slot", "slot" in note, note)
+
+
+def test_single_line_move_warns_about_misalignment() -> None:
+    """When only one line of a label can move, the note must say the rest stays.
+
+    Otherwise a reader takes the `entity_move` at face value and ends up with a
+    ragged label. Measured on `gpu_dc_100.dxf` handle 253: the label cannot
+    travel as a unit (the area row below it is 6026 units wide and boxed in), so
+    only the name can be nudged.
+    """
+    print("single-line move warns about misalignment")
+    source = os.path.abspath(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "..",
+            "drawings", "gpu-datacenter", "gpu_dc_100.dxf",
+        )
+    )
+    if not os.path.exists(source):
+        check("the sample is present", False, f"missing {source}")
+        return
+    report = detect(source)
+    row = next(
+        (f for f in report["findings"] if f["handle"] == "253"),
+        None,
+    )
+    check("the room name is reported", row is not None, str(report["by_kind"]))
+    if row is None:
+        return
+    fix = row.get("fix") or {}
+    check("a move is still offered", fix.get("tool") == "entity_move", str(fix.get("tool")))
+    check("it is flagged as moving alone", fix.get("moves_alone") is True, str(fix.get("moves_alone")))
+    note = fix.get("note", "")
+    check("the note names the line left behind", "254" in note, note)
+    check("the note warns about alignment", "misaligned" in note, note)
+
+
 def test_errors() -> None:
     print("error paths")
     try:
@@ -866,6 +1032,10 @@ def main() -> int:
         test_block_text_says_why_it_has_no_fix,
         test_summary_counts_texts_not_rows,
         test_curve_penetration_is_reported,
+        test_stacked_label_moves_as_one,
+        test_overlapping_texts_are_not_grouped,
+        test_wide_text_says_to_split_it,
+        test_single_line_move_warns_about_misalignment,
         test_non_uniform_block_is_reported,
         test_no_blocks_flag,
         test_errors,

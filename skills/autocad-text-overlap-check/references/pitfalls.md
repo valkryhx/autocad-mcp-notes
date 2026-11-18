@@ -276,6 +276,39 @@ leaves TrueType alone. Anything else would be a guess wearing a number.
 | `MAX_BLOCK_DEPTH` | 8 | Deeper nesting is reported as skipped rather than silently truncated. |
 | `_WIDTH_RATIO` | per font | See [accuracy.md](accuracy.md). |
 | `_THREE_ON_FIVE` | 5/3 | See item 5. |
+| `GROUP_X_OVERLAP` | 0.5 | Two lines of one label share most of their horizontal extent. Below half, unrelated labels stacked in neighbouring rooms start grouping. |
+| `GROUP_MAX_GAP` | 1.0 | One text height. A label's lines sit immediately on top of each other; a wider gap means a separate label. |
+
+## 18. Grouping by proximity fuses a collision into a "label"
+
+A stacked label's lines must move together, but two texts that **overlap** look
+almost identical to two texts that are **stacked** - same layer, same style,
+horizontal overlap. Grouping them produced one "fix" that shifted both by the
+same vector and left the collision exactly where it was. Measured on
+`planted.dxf`: `CRAC-01 40kW` and `精密空调` overlap each other by 41%.
+
+**Do:** require the vertical clearance positively - `_intersection` must be
+`None`. Two overlapping texts are a collision to report, never a label to shift.
+
+## 19. "Boxed in on every side" was the wrong explanation
+
+One fallback note hid three different situations, and only one of them suggested
+the right action. Measured on `gpu_dc_100.dxf`: the area row is 6026 units wide,
+the widest free slot beside it is 1159, and it needs 1916 units of travel to
+clear the axis. No translation can ever work; the actionable advice is "split
+it".
+
+**Do:** compute the free slot on each side before claiming a text is boxed in.
+`_no_shift_reason` returns one of three messages, each naming its own fix.
+
+## 20. A single-line fix on a multi-line label ruins the alignment silently
+
+`253` (`GPU 智算机房`) can be nudged 324 units right and the collision clears -
+but the area row under it stays put, so the label comes out ragged. Nothing in
+the note said so.
+
+**Do:** when only part of a group can move, set `moves_alone` and name the
+handles that stay. The fix is still worth printing; it just must not look free.
 
 ## Adding a check
 

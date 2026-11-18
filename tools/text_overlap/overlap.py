@@ -1368,13 +1368,82 @@ def _legibility_findings(space, texts: list[_Text]) -> list[Finding]:
     return findings
 
 
+#: Two texts are treated as lines of *one* label - and therefore moved together -
+#: when they share a layer and style, overlap horizontally by this share of the
+#: narrower box, and sit **clear of each other** vertically with a gap no larger
+#: than this many text heights. Measured need, on ``gpu_dc_100.dxf``: the room
+#: name ``GPU 智算机房`` sits directly above ``288.0 m² 100 柜 × 12 kW`` (same
+#: layer, x-overlap 100%, gap 141 units against a 600-unit height). Moving the
+#: name alone is possible but breaks the label's alignment; moving both keeps it.
+GROUP_X_OVERLAP = 0.5
+GROUP_MAX_GAP = 1.0
+
+
+def _stack_group(text: _Text, texts: list[_Text]) -> list[_Text]:
+    """The texts that form one multi-line label with ``text``, including itself.
+
+    A room label is authored as several independent TEXT/MTEXT entities stacked
+    in a column - name, number, area. They are one thing to a reader, and moving
+    any single line breaks the block, so a fix has to move them as a unit.
+
+    Deliberately conservative:
+
+    * same layer and same text style,
+    * real horizontal overlap,
+    * **vertical clearance** - the boxes must not already intersect. Two texts
+      that overlap are a collision to report, not a label to shift as a group:
+      measured on ``planted.dxf``, where ``CRAC-01 40kW`` and ``精密空调`` overlap
+      each other, grouping them made one "fix" that left the collision in place,
+    * a vertical gap no larger than one text height, so two unrelated labels in
+      neighbouring rooms are never grouped.
+
+    An empty result (just the text itself) is the normal case. Block-nested text
+    is excluded - it has no movable handle here.
+    """
+    if text.via is not None:
+        return [text]
+    width = text.box[2] - text.box[0]
+    height = text.box[3] - text.box[1]
+    if width <= 0 or height <= 0:
+        return [text]
+    group = [text]
+    for other in texts:
+        if other is text or other.via is not None:
+            continue
+        if other.layer != text.layer or other.style != text.style:
+            continue
+        overlap = min(text.box[2], other.box[2]) - max(text.box[0], other.box[0])
+        narrower = min(width, other.box[2] - other.box[0])
+        if narrower <= 0 or overlap < narrower * GROUP_X_OVERLAP:
+            continue
+        # Already intersecting means this is a collision, not a stack.
+        if _intersection(text.box, other.box) is not None:
+            continue
+        # Vertically adjacent within one text height of one another.
+        if other.box[1] >= text.box[3]:
+            gap = other.box[1] - text.box[3]
+        elif text.box[1] >= other.box[3]:
+            gap = text.box[1] - other.box[3]
+        else:
+            continue
+        if gap > height * GROUP_MAX_GAP:
+            continue
+        group.append(other)
+    return group
+
+
 def _try_shift(
-    box: Box,
+    boxes: list[Box],
     others: list[Box],
     curves: list[tuple],
     height: float,
 ) -> dict | None:
     """The **smallest** verified shift that clears everything, or None.
+
+    ``boxes`` move together as one unit - a single text box in the common case,
+    or the several lines of a stacked label (see ``_stack_group``). Every member
+    is tested at the shifted position, so a group shift is only offered when all
+    of it lands clear.
 
     A suggestion is only worth printing if it works *and* is not wildly larger
     than it needs to be. The naive answer - move just clear of the one thing it
@@ -1383,22 +1452,28 @@ def _try_shift(
     straight onto the circle ``D1``.
 
     So the search is: for each direction, grow the step from a fraction of the
-    text's own height and stop at the first distance whose new box touches no
+    text's own height and stop at the first distance whose new boxes touch no
     other box and no curve. The shortest of those per-direction minima wins.
-    Returns None when even a large shift cannot clear the text, which is the
-    honest answer for a label boxed in on every side.
+    Returns None when even a large shift cannot clear the text.
     """
-    clearance = max((box[3] - box[1]) * 0.10, 0.5)
+    if not boxes:
+        return None
+    tallest = max(box[3] - box[1] for box in boxes)
+    widest = max(box[2] - box[0] for box in boxes)
+    clearance = max(tallest * 0.10, 0.5)
     start = max(height * 0.25, clearance)
-    limit = max(height * 6.0, (box[2] - box[0]) * 2.0)
+    limit = max(height * 6.0, widest * 2.0)
     best: tuple[float, float, float, str] | None = None
 
     def clear_at(dx: float, dy: float) -> bool:
-        moved = (box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy)
-        if any(_intersection(moved, other) is not None for other in others):
-            return False
-        core = _inset(moved, CORE_INSET)
-        return not any(_clip(segment, core) is not None for segment in curves)
+        for box in boxes:
+            moved = (box[0] + dx, box[1] + dy, box[2] + dx, box[3] + dy)
+            if any(_intersection(moved, other) is not None for other in others):
+                return False
+            core = _inset(moved, CORE_INSET)
+            if any(_clip(segment, core) is not None for segment in curves):
+                return False
+        return True
 
     for ax, ay, word in ((0.0, 1.0, "up"), (0.0, -1.0, "down"), (1.0, 0.0, "right"), (-1.0, 0.0, "left")):
         step = start
@@ -1423,6 +1498,69 @@ def _try_shift(
     }
 
 
+def _no_shift_reason(
+    text: _Text,
+    group: list[_Text],
+    all_boxes: list[Box],
+    all_segments: list[tuple],
+) -> str:
+    """Why no shift was offered, in terms a drafter can act on.
+
+    "Something is on every side of it" is true but unhelpful when the real
+    reason is structural. Measured on ``gpu_dc_100.dxf``: the area row
+    ``288.0 m² 100 柜 × 12 kW`` is 6026 units wide and straddles the axis at
+    x=21400; it needs to travel 1916 units to clear that axis, and the labels
+    either side of it block the way long before that. The honest advice is
+    "shorten or split this line", not "move it".
+
+    Three cases, checked in this order:
+
+    * **wide and straddling** - the text is wider than the gap it sits in, so
+      no translation can free it; splitting the line is the fix.
+    * **one line of a stack** - report that the whole label was tried as a unit.
+    * anything else - the generic "boxed in" wording.
+    """
+    width = text.box[2] - text.box[0]
+    height = max(text.box[3] - text.box[1], 0.0)
+
+    # The horizontal slots immediately left and right of this text, measured to
+    # the nearest other text box. If neither slot is wide enough for the text
+    # itself, no pure horizontal shift can ever work.
+    left_limit = None
+    right_limit = None
+    for box in all_boxes:
+        if box == text.box:
+            continue
+        if box[3] <= text.box[1] or box[1] >= text.box[3]:
+            continue
+        if box[2] <= text.box[0]:
+            left_limit = box[2] if left_limit is None else max(left_limit, box[2])
+        elif box[0] >= text.box[2]:
+            right_limit = box[0] if right_limit is None else min(right_limit, box[0])
+    room_left = text.box[0] - left_limit if left_limit is not None else None
+    room_right = right_limit - text.box[2] if right_limit is not None else None
+    widest_slot = max(
+        [value for value in (room_left, room_right) if value is not None], default=None
+    )
+    if widest_slot is not None and width > widest_slot and width > 0:
+        return (
+            f"no shift can free this text: it is {width:.0f} units wide and the "
+            f"widest free slot beside it is {widest_slot:.0f}. Shorten it or "
+            f"split it onto two lines"
+        )
+    if len(group) > 1:
+        others = ", ".join(m.origin for m in group if m is not text)
+        return (
+            f"no shift clears this text even when its whole {len(group)}-line "
+            f"label moves together ({others}). Something crosses every candidate "
+            f"position - move or shorten whatever crosses it, or resize the text"
+        )
+    return (
+        "no short shift clears this text - something is on every side of it. "
+        "Move or shorten whatever crosses it, or resize the text"
+    )
+
+
 def _attach_fixes(
     findings: list[Finding],
     texts: list[_Text],
@@ -1439,6 +1577,8 @@ def _attach_fixes(
     by_origin = {t.origin: t for t in texts}
     all_boxes = [t.box for t in texts]
     all_segments = [segment for _entity, segments, _via in curves for segment in segments]
+    # Group lookups are the same for every finding, so resolve them once.
+    groups = {t.origin: _stack_group(t, texts) for t in texts if t.via is None}
 
     for finding in findings:
         if finding.kind not in ("text_text", "text_curve"):
@@ -1462,19 +1602,63 @@ def _attach_fixes(
             continue
         # Everything except this text's own box.
         others = [box for box in all_boxes if box != text.box]
-        shift = _try_shift(
-            text.box,
-            others,
-            all_segments,
-            text.natural_height or (text.box[3] - text.box[1]),
-        )
+        height = text.natural_height or (text.box[3] - text.box[1])
+        candidate = groups.get(finding.handle) or [text]
+        shift = None
+        group: list[_Text] = []
+        if len(candidate) > 1:
+            # A line of a stacked label is moved with its neighbours, always -
+            # not only when moving it alone fails. Clearing just this line would
+            # break the label's alignment, which is a worse drawing than the
+            # collision: on `gpu_dc_100.dxf`, the room name alone can be nudged
+            # 324 units right, but the area row under it would stay put.
+            member_boxes = [member.box for member in candidate]
+            outside = [box for box in all_boxes if box not in member_boxes]
+            tallest = max(m.natural_height or (m.box[3] - m.box[1]) for m in candidate)
+            group_shift = _try_shift(member_boxes, outside, all_segments, tallest)
+            if group_shift is not None:
+                shift = group_shift
+                group = candidate
+        if shift is None:
+            shift = _try_shift([text.box], others, all_segments, height)
         if shift is None:
             finding.fix = {
                 "tool": None,
+                "note": _no_shift_reason(text, candidate, all_boxes, all_segments),
+            }
+            continue
+        if group:
+            # One `entity_move` per line, expressed as a single `cad_batch` so the
+            # label cannot end up half-moved.
+            finding.fix = {
+                "tool": "cad_batch",
+                "args": {
+                    "steps": [
+                        {
+                            "tool": "entity_move",
+                            "args": {
+                                "handle": member.origin,
+                                "dx": shift["dx"],
+                                "dy": shift["dy"],
+                            },
+                        }
+                        for member in group
+                    ]
+                },
+                "clears": finding.with_handle,
+                "moves": shift["moves"],
+                "moves_with": [
+                    {"handle": member.origin, "text": member.text} for member in group
+                ],
+                "verified": (
+                    f"the whole {len(group)}-line label moves together and was "
+                    f"tested against every other text box and every curve: none "
+                    f"of the lines collides after the shift"
+                ),
                 "note": (
-                    "no short shift clears this text - something is on every "
-                    "side of it. Move or shorten whatever crosses it, or resize "
-                    "the text"
+                    "this text is one line of a stacked label, so the lines above "
+                    "and below it move with it - moving this line alone always "
+                    "lands on one of them"
                 ),
             }
             continue
@@ -1496,6 +1680,19 @@ def _attach_fixes(
                 "drawing better, and an intended crossing needs no change"
             ),
         }
+        if len(candidate) > 1:
+            # The whole label could not be moved, so only this line is offered.
+            # Say so: the reader has to know the other lines stay put, or the
+            # label ends up ragged and they will not know why.
+            stay = ", ".join(m.origin for m in candidate if m is not text)
+            finding.fix["note"] = (
+                f"this line belongs to a {len(candidate)}-line label, but the "
+                f"label cannot move as a whole - so only {finding.handle} moves "
+                f"and {stay} stays put. Moving this line alone will leave the "
+                f"label misaligned; shortening or re-laying-out the label is the "
+                f"better fix"
+            )
+            finding.fix["moves_alone"] = True
 
 
 def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) -> dict:

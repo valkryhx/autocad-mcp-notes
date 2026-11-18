@@ -110,7 +110,21 @@ def _human(report: dict) -> str:
             lines.append(f"     note: {finding['note']}")
         fix = finding.get("fix")
         if fix:
-            if fix.get("tool") == "entity_move":
+            if fix.get("tool") == "cad_batch":
+                steps = fix["args"]["steps"]
+                offset = steps[0]["args"]
+                lines.append(
+                    f"     fix: cad_batch of {len(steps)} entity_move step(s), "
+                    f"each dx={offset['dx']}, dy={offset['dy']}  -> {fix['moves']}"
+                )
+                for member in fix.get("moves_with", []):
+                    excerpt = _excerpt(member["text"], 40)
+                    lines.append(f"          moves {member['handle']} {excerpt}")
+                if fix.get("verified"):
+                    lines.append(f"          verified: {fix['verified']}")
+                if fix.get("note"):
+                    lines.append(f"          {fix['note']}")
+            elif fix.get("tool") == "entity_move":
                 args = fix["args"]
                 lines.append(
                     f"     fix: entity_move(handle={args['handle']!r}, "

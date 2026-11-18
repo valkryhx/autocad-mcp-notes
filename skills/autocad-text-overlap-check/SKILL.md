@@ -81,19 +81,33 @@ Every collision carries a `fix` — or an explanation of why it has none:
 fix: entity_move(handle='252', dx=0.0, dy=286.5)  -> 286.50 drawing units up
      verified: tested against every other text box and every curve ...
 
+fix: cad_batch of 2 entity_move step(s), each dx=1145.09, dy=0.0
+     moves 8B ROOM NAME
+     moves 8C 288.0 m2
+     this text is one line of a stacked label, so the lines above and below it
+     move with it - moving this line alone always lands on one of them
+
 fix: entity_delete(handle='8DB')
      keep 10F and delete 8DB, or the other way round ...
+
+no safe shift: no shift can free this text: it is 6026 units wide and the
+widest free slot beside it is 1159. Shorten it or split it onto two lines
 
 this text lives in block reference 4F5; move or edit it inside the block
 definition, not here.  ``entity_move`` needs the handle of a top-level entity
 ```
 
-Shifts are **tested against every other box and curve** before being offered —
-a shift is never suggested on the assumption it will work. When nothing clears
-it, the finding says `no safe shift` instead of guessing.
+**A multi-line label moves as one unit.** Room labels are authored as several
+stacked entities (name, number, area). The tool groups them — same layer and
+style, horizontal overlap, truly clear of each other vertically, gap under one
+text height — and offers a single `cad_batch` so the label cannot end up
+half-moved. When the label genuinely cannot travel as a whole, the move offered
+for one line says so explicitly and warns that the label will end up misaligned.
 
-The fix is a suggestion: which entity moves, and whether the crossing is
-intended, is the drafter's call. Details in
+Shifts are **tested against every other box and curve** before being offered —
+a shift is never suggested on the assumption it will work. The fix is a
+suggestion: which entity moves, and whether the crossing is intended, is the
+drafter's call. Details in
 [references/reading-a-finding.md](references/reading-a-finding.md).
 
 Reported text also carries its **style name**, because that is what fixes a
@@ -103,7 +117,7 @@ Reported text also carries its **style name**, because that is what fixes a
 
 Re-run the check **on the saved file**. A fix measured in memory is not a fix.
 The checker's own suite is in [references/verification.md](references/verification.md);
-29 test functions / 82 assertions run without AutoCAD.
+33 test functions / 100 assertions run without AutoCAD.
 
 ## When the check says nothing
 

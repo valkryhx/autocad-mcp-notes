@@ -102,7 +102,7 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 ## 验收
 
 ```bash
-# 不需要 AutoCAD（29 个函数 / 82 条断言）
+# 不需要 AutoCAD（33 个函数 / 100 条断言）
 python tools/text_overlap/tests_overlap.py
 
 # 需要 AutoCAD 在运行
@@ -130,6 +130,36 @@ fix: entity_move(handle='D7', dx=286.5, dy=0.0)  -> 286.50 drawing units right
 刚好躲开 `D2`，却正好落在圆 `D1` 上。`_try_shift` 因此对四个方向逐步增大位移，
 取第一个与**任何**框和曲线都不相交的距离。四面都被堵死时返回 `fix: None` 并写明，
 不猜。
+
+### 多行标签整体移动
+
+房间标注是若干独立实体堆成一列（房名、编号、面积），只挪一行会让标注散架。工具按
+四条规则识别同组（`_stack_group`）：同图层同样式、水平重叠 ≥50%、**垂直不相交**、
+间隙 ≤1 个字高。命中就给出 `cad_batch`：
+
+```python
+fix: cad_batch of 2 entity_move step(s), each dx=1145.09, dy=0.0
+     moves 8B ROOM NAME
+     moves 8C 288.0 m2
+```
+
+用 `cad_batch` 的 `on_error=rollback` 保证不会「移了一半」。
+
+「垂直不相交」这条不能省：两个**互相压住**的文字看起来和上下叠放完全一样，第一版
+没排除，结果给了个「整体移」的建议，移完重叠照旧 —— 被
+`test_fix_is_verified_safe` 抓到。
+
+整组挪不动时仍给单行建议，但置 `moves_alone: true` 并警告标注会歪。
+
+### 无解时的原因
+
+三种情况该做的事完全不同，`_no_shift_reason()` 分开说：
+
+| 消息 | 含义 | 该做什么 |
+|---|---|---|
+| `... N units wide and the widest free slot ... is M` | 文字比旁位还宽，平移永远无解 | 拆行或缩短 |
+| `... even when its whole N-line label moves together` | 整组都挪不动 | 移走穿过它的线，或改字号 |
+| `something is on every side of it` | 真四面被围 | 移走或缩短穿过它的东西 |
 
 ## 控制台编码
 

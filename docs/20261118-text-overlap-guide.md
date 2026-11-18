@@ -123,21 +123,55 @@ D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe -m tools.text_overlap 你的�
 
 3. **直接改位置**：选中 → `属性`（Ctrl+1）→ 改 X 坐标，加 286.5
 
+### 情况一之二：`fix` 是一组 `cad_batch`（多行标签）
+
+如果那行字属于一处**多行标注**（比如房名 + 面积分两行写的），工具给的是：
+
+```
+fix: cad_batch of 2 entity_move step(s), each dx=1145.09, dy=0.0
+     moves 8B ROOM NAME
+     moves 8C 288.0 m2
+     this text is one line of a stacked label, so the lines above and below it
+     move with it - moving this line alone always lands on one of them
+```
+
+**意思：这几行是一处标注，必须一起挪。** 只挪一行会让标注看起来歪掉。
+
+**怎么执行**：让 Claude 执行整条 `cad_batch`，或者自己在 AutoCAD 里先把这几行
+**一起选中**，再 `MOVE`、输入同一个距离。
+
+> 如果工具给的是单行 `entity_move` 但带着这样的警告：
+> 「this line belongs to a 2-line label, but the label cannot move as a whole」，
+> 说明整组挪不动，只能挪这一行 —— 挪完标注会歪。更好的做法是重新排版这处标注。
+
 ### 情况二：写 `no safe shift`
+
+工具会给三种不同的原因，**先看是哪种**，因为该做的事完全不一样：
+
+```
+no safe shift: no shift can free this text: it is 6026 units wide and the
+widest free slot beside it is 1159. Shorten it or split it onto two lines
+```
+→ **文字比旁边的空位还宽，平移永远无解。** 改成两行，或者把内容缩短。
+
+```
+no safe shift: no shift clears this text even when its whole 2-line label
+moves together (254). ...
+```
+→ **整组标签一起移也移不动。** 去挪那条穿过它的线，或者调整字号。
 
 ```
 no safe shift: no short shift clears this text - something is on every side of it.
 Move or shorten whatever crosses it, or resize the text
 ```
+→ **真的四面被围。** 看下面的三个选择。
 
-**意思是：这行字四面八方都被挡住了，挪不开。** 这不是工具偷懒，是它试过所有方向、所有距离，都还是会撞到东西——所以诚实地告诉你，而不是给你一个没用的建议。
-
-这时你有三个选择：
+一般的三个选择：
 
 | 做法 | 什么时候用 |
 |---|---|
 | 挪**穿过去的那根线** | 那根线是可以动的（比如一道墙可以开洞、一条轴线可以改短） |
-| 把字改短 | 文字太长，比如「TELECOM EQUIPMENT ROOM」缩成「TE ROOM」 |
+| 把字改短 / 拆成两行 | 文字太长，比如「TELECOM EQUIPMENT ROOM」缩成「TE ROOM」 |
 | 把字改小 | 但如果改小就变成 `text_scale` 问题了，慎用 |
 
 **先看切得多深。** 穿线类的 `note` 里会写穿透程度：
