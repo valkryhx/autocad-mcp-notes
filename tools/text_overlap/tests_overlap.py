@@ -211,7 +211,7 @@ def test_table_cells_are_read() -> None:
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "draw_test", "123_check.dxf")
     )
     if not os.path.exists(source):
-        print("  SKIP  sample not available")
+        check("table sample is present", False, f"missing {source}")
         return
     report = detect(source)
     src = ezdxf.readfile(source)
@@ -297,7 +297,7 @@ def test_dimension_text_is_read() -> None:
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "draw_test", "123_check.dxf")
     )
     if not os.path.exists(source):
-        print("  SKIP  sample not available")
+        check("dimension sample is present", False, f"missing {source}")
         return
     report = detect(source)
     src = ezdxf.readfile(source)

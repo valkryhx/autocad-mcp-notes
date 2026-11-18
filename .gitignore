@@ -44,3 +44,7 @@ Thumbs.db
 
 # 内容为空的占位文件
 bug.md
+
+# 文字交叠检查的测试夹具：ezdxf 1.4.4 没有 table API，也拒绝复制 ACAD_TABLE
+# （CopyNotSupported），造不出真实表格和标注的样本，所以这份图不可替代。
+!draw_test/123_check.dxf
