@@ -477,6 +477,132 @@ table insert (13600,8000) + horizontal_direction (1,0,0)
 - 2026-11-18 首次记录。基于 ezdxf 1.4.4 实测；8 个根因均含可复现证据。检测器已通过三项验收（干净图 0 误报 / 植入 6 类全检出 / 9 对齐点 ≤2.89 单位）。
 - 2026-11-18 第二轮：补齐块内文字（含嵌套/旋转）、ATTRIB、表格单元格、标注文字，新增 `text_scale` 检查。追加 4 个根因（第九至十三节）。测试扩到 35 项，精度无回归。
 - 2026-11-18 第三轮：补三个盲区 ——（十四）TEXT 在旋转块里被重复加旋转，是我自己的错，第十节已更正；（十五）合并单元格已验证 AutoCAD 行为正确，不是盲区；（十六）新增 `text_illegible`，按视口比例折算到纸面毫米并与真实 PDF 交叉验证。测试 24 函数 / 60 断言。技能重构为 `SKILL.md` + `references/` 六篇 + `assets/` 的目录结构。
+- 2026-11-18 第四轮：**拿用户的真实图纸跑，暴露四处该优化的地方**（十七至二十）。新增第七类检查 `text_glyphless`，报告加文字样式。测试 27 函数 / 75 断言。
+
+## 第四轮：跑真实图纸才暴露的问题
+
+前面三轮用的都是自己造的样例。这一轮直接跑用户机器上的六张图（`123`、`Drawing7`、`telecom`、`telecom_fixed`、`datacenter_plan_200558`、`gpu_dc_100`），立刻发现四处：
+
+### 十七、同一对文字被报两次，读起来像两个缺陷
+
+`123.dxf` 里两组完全重合的文字，同时命中 `text_text` 和 `text_duplicate`，因此
+两组缺陷产生了 **4 条**结果：
+
+```
+text_text      10F <-> 8DB      <- 同
+text_text      110 <-> 8DC      <- 一
+text_duplicate 10F <-> 8DB      <- 件
+text_duplicate 110 <-> 8DC      <- 事
+```
+
+而且 `text_text` 给的 `fix` 是「挪开」——对重复项来说是**错的做法**，挪开之后两行字
+都还在图上。
+
+修法：`_drop_duplicate_collisions()` 删掉被 `text_duplicate` 覆盖的 `text_text`
+行，保留后者。同时给 `text_duplicate` 补上 `entity_delete` 建议：
+
+```
+fix: entity_delete(handle='8DB')
+     keep 10F and delete 8DB, or the other way round - the two are identical
+     apart from their handle
+```
+
+结果：`123.dxf` 从 5 条降到 3 条，且每条都是不同的缺陷。
+
+### 十八、块内文字拿不到 `fix`，却不说为什么
+
+块展开出来的文字 handle 形如 `50A in 4F5`，`entity_move` 拿它**什么都动不了**。
+原来的代码直接 `continue`，于是 `fix` 是空 —— 而空的 `fix` 读起来像「查过了，
+没问题」。
+
+修法：显式说明该去哪里改。
+
+```
+this text lives in block reference 4F5; move or edit it inside the block
+definition, not here.  ``entity_move`` needs the handle of a top-level entity
+```
+
+### 十九、新增第七类检查 `text_glyphless`：字在屏幕上没事，打印出来缺字符
+
+这是这一轮最有价值的发现，而且**它正是 AGENTS.md 第一号坑，却从来没被检查过**。
+
+跑用户的三张图，`Drawing7`、`datacenter_plan_200558`、`telecom`（含 fixed）全部命中：
+
+```
+text_glyphless at (3847, 3662)
+   EC [A-ROOM-T-N] 52.92 m² [style Standard]
+   note: 7 text(s) use style 'Standard' (font 'txt', no CJK/Unicode fallback)
+         and contain '²': those characters do not plot
+```
+
+即：这些图的 `m²` 在图上看着正常（AutoCAD 编辑器里 `²` 有替代显示），
+**打印出来会变成 `m`**。
+
+判定逻辑只能靠一条可证实的边界：
+
+| 字体类型 | 缺字形时 | 能否用 cmap 判断 |
+|---|---|---|
+| SHX（`txt.shx`） | **静默不画** | — |
+| TrueType（`simhei.ttf`） | **自动回退到别的字体照样画** | ❌ |
+
+实测证据：`simhei.ttf` 的 cmap 里**没有 U+00B2**，但 AutoCAD 用它渲染 `m²` 完全正常。
+所以任何基于 cmap 或字形轮廓的判断都会误报。三条路都试过，全部不可靠（见
+`references/pitfalls.md` 第 17 条）：
+
+| 方法 | 结论 |
+|---|---|
+| `fontTools` 查 cmap | `simhei` 说没有 `²`，但 AutoCAD 画得出来 |
+| ezdxf `text_path("²")` | 找不到字体时静默回退成默认字体，永远「有」 |
+| 字符宽度 vs 空格宽度 | 回退字形和真字形都有宽度，无法区分 |
+
+最终只跑可证实的那一条：**SHX 样式且 `bigfont` 为空**。带 bigfont 的 SHX 放行
+（big font 正是提供 CJK 字形的），TrueType 一律不管。
+
+### 二十、报告不显示文字样式，而样式恰恰是修法
+
+`_collect_texts` 一直在收 `style`，但从没输出过。而 `text_glyphless` 的修法就是
+换样式 —— 不显示样式，用户还得回 CAD 里查。
+
+加上 `[style CN]` 标签后，顺手发现一个隐藏问题：
+
+```python
+entity.dxf.get("style", "")   # 123.dxf 里 142 个文字中 136 个返回 ""
+```
+
+DXF 语义里属性缺席就等于 `Standard`。原来的代码于是对绝大多数标签报「无样式」，
+恰好掩盖了它们**全都在 `Standard`**（即 `txt.shx`）这个事实。加 `_style_of()` 补默认值。
+
+### 顺带更正一处旧结论
+
+`references/pitfalls.md` 第 7 条标题还写着「`transform()` 保留缩放、丢掉旋转」——
+这是上一轮已更正、但这里漏改的。已改为「旋转会被应用两次」，并说明了当初为什么会
+误判（MTEXT 的 `rotation` 属性在 `text_direction` 存在时缺席，导致「在 0 上加一次」
+看起来正确）。
+
+### 对用户图纸的实际修复与复测
+
+`123.dwg` 三处都修了，逐步复测：
+
+| 步骤 | 操作 | `by_kind` 变化 |
+|---|---|---|
+| 起点 | — | `text_curve:1, text_duplicate:2, text_glyphless:1` |
+| ① 删重复 | 删 `8DB`、`8DC` | `text_duplicate` → 0，露出真实的 `text_scale:1` |
+| ② 改样式比例 | `ISO-25`/`Standard`/`Annotative` 的 `dimscale` → 50 | `text_scale` → 0 |
+| ③ 换字体 | `Standard` 字体 `txt` → `simsun.ttc` | `text_glyphless` → 0 |
+| 结果 | `123_fixed3.dxf` | **全部清零** |
+
+第 ① 步顺带印证了一件事：重复项删掉后，原本被挤在后面的 `text_scale` 才浮出来 ——
+**修完一处要重跑**，否则会漏掉下一处。
+
+### 这一轮的验证
+
+| 项 | 结果 |
+|---|---|
+| 测试 | **27 个函数 / 75 条断言全通过**（新增 3 个函数 15 条断言） |
+| 干净图 `clean.dxf` | 仍 0 条 |
+| 植入图 `planted.dxf` | 仍 6/6，对照组不误报 |
+| 用户 6 张图 | 全部跑通，无崩溃 |
+| 修复复测 | `123` 三处逐项归零 |
 
 ## 第三轮：三个盲区
 

@@ -612,6 +612,127 @@ def test_illegible_text_uses_viewport_scale() -> None:
           report3["by_kind"]["text_illegible"] == 0, str(report3["by_kind"]))
 
 
+def test_glyphless_style_is_reported() -> None:
+    """Text whose SHX style cannot draw its own characters.
+
+    `txt.shx` carries no CJK and no `²`, and AutoCAD draws nothing for them
+    without any warning - the string reads back correctly and the plot is
+    missing the characters (docs/20261117-chinese-text.md). This pins that the
+    check fires for an SHX style, stays quiet for a TrueType one, and stays quiet
+    for ASCII in an SHX style.
+    """
+    print("text a style cannot draw")
+
+    # A `txt.shx` style in this fixture must be created explicitly: ezdxf's
+    # `setup=True` also installs a `Standard` whose font is `txt`.
+    doc, msp = _new("")
+    doc.styles.add("SHX", font="txt")
+    for style, text, dx in (
+        ("SHX", "54.48 m²", 0.0),      # superscript in a stroke font: dropped
+        ("SHX", "A-ROOM", 3000.0),     # plain ASCII: always fine
+        ("CN", "54.48 m²", 6000.0),    # TrueType: renders, no finding
+    ):
+        ent = msp.add_mtext(text, dxfattribs={"char_height": 250, "style": style})
+        ent.dxf.attachment_point = 1
+        ent.dxf.insert = (dx, 0.0)
+    report = detect(_save(doc, "ov_glyphless.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_glyphless"]
+    check("one row for the SHX style, not one per text", len(rows) == 1, str(report["by_kind"]))
+    if rows:
+        note = rows[0].get("note", "")
+        check("the note names the style", "SHX" in note, note)
+        check("the note names the characters", "²" in note, note)
+        check("the note offers a fix", "TrueType" in note, note)
+    check(
+        "ASCII in an SHX style is not reported",
+        not any("A-ROOM" in (f.get("text") or "") for f in rows),
+        str([f.get("text") for f in rows]),
+    )
+    check(
+        "TrueType with the same text is not reported",
+        not any((f.get("text") or "").startswith("54.48") and f.get("style") == "CN" for f in rows),
+        str([(f.get("text"), f.get("style")) for f in rows]),
+    )
+
+    # A big font is exactly what makes an SHX style able to draw CJK.
+    doc, msp = _new("")
+    big = doc.styles.add("SHXBIG", font="txt")
+    big.dxf.bigfont = "hztxt.shx"
+    ent = msp.add_mtext("机房", dxfattribs={"char_height": 250, "style": "SHXBIG"})
+    ent.dxf.attachment_point = 1
+    ent.dxf.insert = (0.0, 0.0)
+    report = detect(_save(doc, "ov_glyphless_big.dxf"))
+    check(
+        "an SHX style with a big font is not reported",
+        report["by_kind"]["text_glyphless"] == 0,
+        str(report["by_kind"]),
+    )
+
+
+def test_duplicate_pair_is_reported_once() -> None:
+    """One coincident pair is one defect, not a collision row plus a duplicate row.
+
+    Measured on `draw_test/123.dxf`, where two pairs produced four rows and read
+    as four problems. The row kept is the duplicate one: a `text_text` row offers
+    a shift, and shifting a duplicate leaves both texts in the drawing.
+    """
+    print("duplicate reported once")
+    doc, msp = _new("")
+    for _ in range(2):
+        ent = msp.add_mtext("01", dxfattribs={"char_height": 200, "style": "CN"})
+        ent.dxf.attachment_point = 1
+        ent.dxf.insert = (0.0, 0.0)
+    report = detect(_save(doc, "ov_dup_once.dxf"))
+    kinds = [f["kind"] for f in report["findings"]]
+    check("no text_text row for a coincident pair", "text_text" not in kinds, str(kinds))
+    check("exactly one text_duplicate row", kinds.count("text_duplicate") == 1, str(kinds))
+    row = next(f for f in report["findings"] if f["kind"] == "text_duplicate")
+    check("the note says to delete rather than move", "Delete one" in row.get("note", ""), row.get("note", ""))
+
+    # A near miss that is NOT a duplicate must still be reported as a collision.
+    doc, msp = _new("")
+    for text, dx in (("AAAA", 0.0), ("BBBB", 40.0)):
+        ent = msp.add_mtext(text, dxfattribs={"char_height": 200, "style": "CN"})
+        ent.dxf.attachment_point = 1
+        ent.dxf.insert = (dx, 0.0)
+    report = detect(_save(doc, "ov_dup_control.dxf"))
+    check(
+        "different text overlapping is still text_text",
+        report["by_kind"]["text_text"] == 1,
+        str(report["by_kind"]),
+    )
+
+
+def test_block_text_says_why_it_has_no_fix() -> None:
+    """A collision inside a block cannot be fixed with `entity_move`.
+
+    The handle is `BLOCK[ref]`, which addresses nothing as a top-level entity, so
+    an empty `fix` would read as "checked, nothing to do". It must say where the
+    edit belongs instead.
+    """
+    print("block text explains its missing fix")
+    doc, msp = _new("")
+    block = doc.blocks.new("TAG")
+    # attachment 1 puts the insertion point on the top edge, so the box hangs
+    # below y=0 - a line at y=-100 crosses the glyphs.
+    inner = block.add_mtext("TAG-1", dxfattribs={"char_height": 200, "style": "CN"})
+    inner.dxf.attachment_point = 1
+    inner.dxf.insert = (0.0, 0.0)
+    block.add_line((-500, -100), (1000, -100))
+    msp.add_blockref("TAG", (0.0, 0.0))
+    report = detect(_save(doc, "ov_block_fix.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "text_curve"]
+    check("block collision reported", len(rows) == 1, str(report["by_kind"]))
+    if rows:
+        fix = rows[0].get("fix") or {}
+        check("no entity_move is offered", fix.get("tool") is None, str(fix))
+        note = fix.get("note", "")
+        # The block *reference handle* is what a caller can act on, so that is
+        # what the note names - not the block definition's name.
+        check("the note names the block reference", "block reference" in note, note)
+        check("the note says where to edit", "inside the block definition" in note, note)
+
+
 def test_errors() -> None:
     print("error paths")
     try:
@@ -661,6 +782,9 @@ def main() -> int:
         test_rotation_is_not_applied_twice,
         test_merged_table_cells_keep_correct_text,
         test_illegible_text_uses_viewport_scale,
+        test_glyphless_style_is_reported,
+        test_duplicate_pair_is_reported_once,
+        test_block_text_says_why_it_has_no_fix,
         test_non_uniform_block_is_reported,
         test_no_blocks_flag,
         test_errors,

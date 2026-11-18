@@ -141,6 +141,11 @@ class Finding:
     layer: str
     text: str
     box: Box
+    #: DXF text style name. Reported because it is what a reader needs to fix a
+    #: glyph problem: changing the style is how `m²`/`Ø`/CJK starts rendering,
+    #: and the style is not visible from layer + text alone.
+    style: str = ""
+    with_style: str | None = None
     with_handle: str | None = None
     with_kind: str | None = None
     with_layer: str | None = None
@@ -164,6 +169,8 @@ class Finding:
         }
         if self.via is not None:
             out["in_block"] = self.via
+        if self.style:
+            out["style"] = self.style
         if self.with_handle is not None:
             out["with"] = {
                 "handle": self.with_handle,
@@ -171,6 +178,8 @@ class Finding:
                 "layer": self.with_layer,
                 "text": self.with_text,
             }
+            if self.with_style:
+                out["with"]["style"] = self.with_style
         if self.ratio is not None:
             out["overlap_ratio"] = round(self.ratio, 4)
         if self.where is not None:
@@ -306,7 +315,7 @@ def _dims_of_space(space, skipped: list[str]) -> tuple[list[_Text], dict]:
                     box=box,
                     text=_renderable(member),
                     layer=str(entity.dxf.get("layer", "0")),
-                    style=str(member.dxf.get("style", "")),
+                    style=_style_of(member),
                     reliable=calibration.reliable,
                     origin=str(entity.dxf.handle),
                     via=None,
@@ -337,6 +346,19 @@ def _renderable(entity) -> str:
     if kind == "MTEXT":
         return entity.plain_text().replace("\n", " | ").strip()
     return (entity.dxf.get("text", "") or "").strip()
+
+
+def _style_of(entity) -> str:
+    """The entity's text style, with DXF's default made explicit.
+
+    A text entity that carries no ``style`` at all is drawn in ``Standard`` -
+    that is what AutoCAD reads. Measured on ``draw_test/123.dxf``: 136 of its 142
+    texts have the attribute absent, so reading it with a ``""`` default said
+    "no style" for almost every label and hid the fact that they all land in
+    ``Standard``.
+    """
+    name = entity.dxf.get("style", "") if entity.dxf.is_supported("style") else ""
+    return str(name or "Standard")
 
 
 #: How deep nested block references are followed. A depth cap keeps a
@@ -539,7 +561,7 @@ def _collect_texts(
                 box=box,
                 text=_renderable(entity),
                 layer=str(entity.dxf.get("layer", "0")),
-                style=str(entity.dxf.get("style", "")),
+                style=_style_of(entity),
                 reliable=calibration.reliable,
                 origin=str(entity.dxf.handle),
                 natural_height=_natural_height(entity, box),
@@ -567,7 +589,7 @@ def _measure_attrib(attrib, via: str, skipped: list[str]) -> list[_Text]:
             box=box,
             text=label,
             layer=str(attrib.dxf.get("layer", "0")),
-            style=str(attrib.dxf.get("style", "")),
+            style=_style_of(attrib),
             reliable=calibration.reliable,
             origin=f"{attrib.dxf.handle or '?'} in {via}",
             via=via,
@@ -617,7 +639,7 @@ def _measure_in_block(member, matrix, via: str, skipped: list[str]) -> list[_Tex
             box=box,
             text=_renderable(member),
             layer=str(member.dxf.get("layer", "0")),
-            style=str(member.dxf.get("style", "")),
+            style=_style_of(member),
             reliable=calibration.reliable,
             origin=f"{(member.dxf.handle or '?')} in {via}",
             via=via,
@@ -824,6 +846,7 @@ def _scale_findings(texts: list[_Text]) -> list[Finding]:
                 kind="text_scale",
                 handle=first.origin,
                 layer=first.layer,
+                style=first.style,
                 text=first.text,
                 box=first.box,
                 with_kind=kind,
@@ -871,6 +894,8 @@ def _text_text(texts: list[_Text]) -> list[Finding]:
                     kind="text_text",
                     handle=first.origin,
                     layer=first.layer,
+                    style=first.style,
+                    with_style=second.style,
                     text=first.text,
                     box=first.box,
                     with_handle=second.origin,
@@ -976,6 +1001,7 @@ def _text_curve(
                 kind="text_curve",
                 handle=text.origin,
                 layer=text.layer,
+                style=text.style,
                 text=text.text,
                 box=text.box,
                 with_handle=first_handle,
@@ -993,6 +1019,94 @@ def _text_curve(
             )
         )
     return findings, skipped
+
+
+def _glyphless_style(style_name: str, doc) -> str | None:
+    """The font name when this style cannot draw non-ASCII, else None.
+
+    An SHX stroke font carries only the characters its glyph table lists. The
+    stock ``txt.shx`` has no CJK and no `²`/`Ø`/`³`, and AutoCAD then draws
+    nothing for those characters **without reporting anything** - the text is
+    stored, reads back correctly, and is invisible. Verified with screenshots in
+    ``docs/20261117-chinese-text.md``. A SHX style with a ``bigfont`` covers CJK
+    (that is what big fonts are for), so only a bigfont-less SHX style is flagged.
+
+    TrueType is deliberately not judged here. `simhei.ttf` has no U+00B2 in its
+    cmap, yet AutoCAD renders `m²` in it - measured with a COM width probe - so a
+    cmap test would raise false alarms. The documented, reproducible failure is
+    the SHX one.
+    """
+    try:
+        style = doc.styles.get(style_name)
+    except Exception:
+        return None
+    font = str(style.dxf.get("font", "") or "").strip()
+    if not font:
+        return None
+    lower = font.lower()
+    if lower.endswith((".ttf", ".ttc", ".otf")):
+        return None
+    # `txt`, `txt.shx`, `simplex.shx` - a stroke font, not a filled font.
+    if style.dxf.get("bigfont", ""):
+        return None
+    return font
+
+
+def _style_glyph_findings(space, texts: list[_Text]) -> list[Finding]:
+    """Text whose characters its own SHX style cannot draw.
+
+    Reports as ``text_glyphless``, one row per style and font, because a whole
+    drawing in ``Standard`` is one mistake to fix, not a hundred.
+
+    The failure this catches is silent in every other tool: the entity is there,
+    ``entity_list`` reads the right string back, and the plot simply lacks those
+    characters. Measured on ``draw_test/datacenter_plan_200558.dxf`` and
+    ``Drawing7.dxf``, whose three area labels are all in ``Standard`` /
+    ``txt.shx`` and whose `²` therefore never plots.
+    """
+    doc = space.doc
+    groups: dict[tuple[str, str], list[_Text]] = {}
+    for text in texts:
+        if not text.text:
+            continue
+        # Only the characters an SHX stroke font is known to lack: CJK, and the
+        # superscript/degree/diameter/plus-minus symbols Latin-1 draws above or
+        # outside ASCII.
+        exotic = {ch for ch in text.text if ord(ch) > 127}
+        if not exotic:
+            continue
+        font = _glyphless_style(text.style, doc)
+        if font is None:
+            continue
+        groups.setdefault((text.style, font), []).append(text)
+
+    findings: list[Finding] = []
+    for (style_name, font), group in sorted(groups.items()):
+        first = group[0]
+        chars = sorted({ch for t in group for ch in t.text if ord(ch) > 127})
+        findings.append(
+            Finding(
+                kind="text_glyphless",
+                handle=first.origin,
+                layer=first.layer,
+                style=style_name,
+                text=first.text,
+                box=first.box,
+                where=(
+                    (first.box[0] + first.box[2]) / 2,
+                    (first.box[1] + first.box[3]) / 2,
+                ),
+                note=(
+                    f"{len(group)} text(s) use style {style_name!r} "
+                    f"(font {font!r}, no CJK/Unicode fallback) and contain "
+                    f"{''.join(chars)!r}: those characters do not plot. "
+                    f"Point the text at a TrueType style "
+                    f"(simsun.ttc / simhei.ttf) - and write the Unicode "
+                    f"character, not a %% escape"
+                ),
+            )
+        )
+    return findings
 
 
 def _visibility_findings(space, texts: list[_Text]) -> list[Finding]:
@@ -1030,6 +1144,7 @@ def _visibility_findings(space, texts: list[_Text]) -> list[Finding]:
                 kind="text_hidden",
                 handle=first.origin,
                 layer=layer,
+                style=first.style,
                 text=first.text,
                 box=first.box,
                 where=(
@@ -1072,6 +1187,8 @@ def _duplicate_findings(texts: list[_Text]) -> list[Finding]:
                     kind="text_duplicate",
                     handle=first.origin,
                     layer=first.layer,
+                    style=first.style,
+                    with_style=second.style,
                     text=first.text,
                     box=first.box,
                     with_handle=second.origin,
@@ -1082,10 +1199,47 @@ def _duplicate_findings(texts: list[_Text]) -> list[Finding]:
                         (first.box[0] + first.box[2]) / 2,
                         (first.box[1] + first.box[3]) / 2,
                     ),
-                    note="the same text twice in the same place - one of them is a duplicate",
+                    note=(
+                        "the same text twice in the same place - one of them is "
+                        "a duplicate. Delete one rather than moving it"
+                    ),
+                    fix={
+                        "tool": "entity_delete",
+                        "args": {"handle": second.origin},
+                        "which": "the later of the two",
+                        "note": (
+                            f"keep {first.origin} and delete {second.origin}, or "
+                            f"the other way round - the two are identical apart "
+                            f"from their handle"
+                        ),
+                    },
                 )
             )
     return findings
+
+
+def _drop_duplicate_collisions(
+    findings: list[Finding], duplicates: list[Finding]
+) -> list[Finding]:
+    """Remove the ``text_text`` row that a ``text_duplicate`` row already covers.
+
+    Two coincident texts always trip both checks, and the same pair listed twice
+    reads as two defects instead of one. Measured on ``draw_test/123.dxf``: `01`
+    at (1861.4, 2468.2) produced four rows for two real duplicates.
+
+    The duplicate row is the one kept, because it is the better instruction:
+    a ``text_text`` row offers a shift, and shifting a duplicate leaves both
+    texts in the drawing. Returns a new list; the order of what remains is
+    preserved.
+    """
+    pairs = {(d.handle, d.with_handle) for d in duplicates}
+    pairs |= {(b, a) for a, b in pairs}
+    kept: list[Finding] = []
+    for finding in findings:
+        if finding.kind == "text_text" and (finding.handle, finding.with_handle) in pairs:
+            continue
+        kept.append(finding)
+    return kept
 
 
 def _plot_scales(space) -> list[tuple[str, float, float]]:
@@ -1164,6 +1318,7 @@ def _legibility_findings(space, texts: list[_Text]) -> list[Finding]:
                 kind="text_illegible",
                 handle=first.origin,
                 layer=first.layer,
+                style=first.style,
                 text=first.text,
                 box=first.box,
                 where=(
@@ -1256,7 +1411,21 @@ def _attach_fixes(
         if finding.kind not in ("text_text", "text_curve"):
             continue
         text = by_origin.get(finding.handle)
-        if text is None or text.via is not None:
+        if text is None:
+            continue
+        if text.via is not None:
+            # Text expanded out of a block has no handle of its own in this
+            # space: ``entity_move`` on ``4B2 in 3F1`` addresses nothing. Say so
+            # instead of leaving ``fix`` empty, which reads as "checked and
+            # found nothing wrong".
+            finding.fix = {
+                "tool": None,
+                "note": (
+                    f"this text lives in block reference {text.via}; move or "
+                    f"edit it inside the block definition, not here. "
+                    f"``entity_move`` needs the handle of a top-level entity"
+                ),
+            }
             continue
         # Everything except this text's own box.
         others = [box for box in all_boxes if box != text.box]
@@ -1327,8 +1496,14 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
     _attach_fixes(findings, texts, _curves_of_space(space, []))
     findings.extend(_scale_findings(texts))
     findings.extend(_visibility_findings(space, texts))
-    findings.extend(_duplicate_findings(texts))
+    duplicates = _duplicate_findings(texts)
+    # Two coincident texts trip both checks; listing the pair twice reads as two
+    # defects instead of one. The duplicate row is kept because it is the better
+    # instruction - a shift would leave both texts in the drawing.
+    findings = _drop_duplicate_collisions(findings, duplicates)
+    findings.extend(duplicates)
     findings.extend(_legibility_findings(space, texts))
+    findings.extend(_style_glyph_findings(space, texts))
     findings.sort(key=lambda f: (-(f.ratio or 0), f.kind))
 
     # How many text entities the space holds *directly*: a reader that
@@ -1361,6 +1536,7 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
             "text_hidden",
             "text_duplicate",
             "text_illegible",
+            "text_glyphless",
         )
         },
         "not_checked": sorted(set(skipped_text + skipped_curves)),

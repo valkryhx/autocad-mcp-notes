@@ -37,7 +37,7 @@ A real report on a real drawing is in `assets/sample-report.txt` (human form) an
 `assets/findings.json` (`--json`), both produced from
 `draw_test/gpu_dc_100.dxf`.
 
-## The six checks
+## The seven checks
 
 | kind | meaning | needs |
 |---|---|---|
@@ -47,6 +47,12 @@ A real report on a real drawing is in `assets/sample-report.txt` (human form) an
 | `text_hidden` | text on a layer that is **off or frozen** — it will not print | — |
 | `text_duplicate` | the same text twice in the same place | — |
 | `text_illegible` | model text that prints below ISO 3098's 2.5 mm | a paper viewport |
+| `text_glyphless` | text using an SHX style with no glyphs for its own characters | — |
+
+The last one is the quietest defect of the lot: `Standard` is `txt.shx`, which
+has no CJK and no `²`/`Ø`/`±`. AutoCAD stores the string, returns it unchanged
+from `entity_list`, draws nothing, and warns nobody. The area label `54.48 m²`
+plots as `54.48 m`.
 
 Thresholds are explained in `references/pitfalls.md` under "Why these numbers".
 
@@ -69,25 +75,35 @@ dimension's own arrows and lines.
 
 ## Find something, then fix it
 
-Every `text_text` / `text_curve` finding carries a `fix` that was **tested
-against every other box and curve** before being offered — a shift is never
-suggested on the assumption it will work:
+Every collision carries a `fix` — or an explanation of why it has none:
 
 ```
 fix: entity_move(handle='252', dx=0.0, dy=286.5)  -> 286.50 drawing units up
      verified: tested against every other text box and every curve ...
+
+fix: entity_delete(handle='8DB')
+     keep 10F and delete 8DB, or the other way round ...
+
+this text lives in block reference 4F5; move or edit it inside the block
+definition, not here.  ``entity_move`` needs the handle of a top-level entity
 ```
 
-When nothing clears it, the finding says `no safe shift` instead of guessing.
+Shifts are **tested against every other box and curve** before being offered —
+a shift is never suggested on the assumption it will work. When nothing clears
+it, the finding says `no safe shift` instead of guessing.
+
 The fix is a suggestion: which entity moves, and whether the crossing is
 intended, is the drafter's call. Details in
 [references/reading-a-finding.md](references/reading-a-finding.md).
+
+Reported text also carries its **style name**, because that is what fixes a
+`text_glyphless` row and it is not visible from layer and content alone.
 
 ## Before you claim a change works
 
 Re-run the check **on the saved file**. A fix measured in memory is not a fix.
 The checker's own suite is in [references/verification.md](references/verification.md);
-24 tests / 60 assertions run without AutoCAD.
+27 test functions / 75 assertions run without AutoCAD.
 
 ## When the check says nothing
 

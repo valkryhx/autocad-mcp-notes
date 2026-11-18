@@ -99,31 +99,31 @@ Related: setting `AttachmentPoint` over COM makes AutoCAD rewrite the insertion
 point to keep the text visually still. The `insert` read back from DXF is
 already the anchor, so validate against the DXF value.
 
-## 7. `entity.transform()` keeps scale and drops rotation
+## 7. Rotation gets applied **twice** when you re-derive it from the matrix
 
-```python
-plain     insert=(0,0)  ch=100  rot=None
-rot45     insert=(0,0)  ch=100  rot=None    # the 45° is gone
-scalex3   insert=(0,0)  ch=300  rot=None    # the scale survived
-```
+An earlier note in this project said `transform()` "drops rotation". **That was
+wrong.** `transform()` folds the reference's rotation into the entity — MTEXT into
+`text_direction`, TEXT into `rotation` — on top of whatever the member already
+had.
 
-**Correction to an earlier note in this project's docs:** `transform()` does not
-simply drop rotation — it folds it into the entity, writing MTEXT's
-`text_direction` and TEXT's `rotation`. The bug that actually happened was
-*adding it twice*: `_measure_in_block` read the block's angle and added it on
-top of the entity's own already-correct angle. TEXT in a 65° block measured at
-110°.
+The bug that actually happened was adding the block's angle again *after*
+`transform()`. For MTEXT that was harmless only because `rotation` is absent once
+`text_direction` is set, so the base being added to was 0 — which is why the block
+tests passed. For TEXT the base was the already-correct 65, and the box came out
+at 110°.
 
-MTEXT escaped this only by accident: once `text_direction` is set, the entity's
-`rotation` attribute is absent, so the value being added to was 0. That is
-exactly why the block tests passed and only the TEXT case broke.
-
-**Do:** apply `transform()`, then measure. Do not re-apply the block angle. The
-regression test is `test_rotation_is_not_applied_twice`, which asserts the
-box's height/width ratio is 1.4–2.2 (the 65° shape), not the ~2.75 of 110°.
+The regression test is `test_rotation_is_not_applied_twice`, which asserts the
+box's height/width ratio is 1.4–2.2 (the 65° shape), not ~2.75 (110°).
 
 Mirrored or non-uniform transforms cannot be expressed as an axis-aligned box at
 all — report them as `not_checked`.
+
+## 7a. `entity.transform()` keeps scale too
+
+An earlier reading of the same experiment concluded "scale survives, rotation is
+lost". Scale does survive, and so does rotation — the observation was an artefact
+of reading `rotation` instead of `text_direction`. Do not write code against the
+old conclusion.
 
 ## 8. `virtual_entities()` returns no ATTRIB
 
@@ -215,10 +215,51 @@ A drawing whose labels all live in blocks reported `{'texts_total': 0,
 'by_kind': {'text_text': 0}}` — a clean bill of health for a completely unread
 file.
 
+The same trap reappeared in the test suite: a test that could not find its
+fixture printed `SKIP` and returned, so the run still ended `PASS: all tests`
+while the claim that test exists to pin went unchecked. Once the fixture is
+committed, a missing file is a broken checkout — **make it fail**.
+
 **Do:** count what was read and what was skipped, and print both. `detect()`
 returns `texts_measured`, `texts_in_blocks`, `containers`, and `not_checked`;
 `__main__` prints the `not checked` list before the findings. This is AGENTS.md
 rule 6 — an incomplete scan is not a pass.
+
+## 15. A text style is not on the entity when it is `Standard`
+
+`entity.dxf.get("style", "")` returns `""` for a text that carries no style
+attribute — and DXF says that means `Standard`. Measured on
+`draw_test/123.dxf`: 136 of 142 texts have the attribute absent, so the report
+said "no style" for almost every label and hid that they all land in
+`Standard` — the style whose font is `txt.shx` and which therefore cannot draw
+their `²`.
+
+**Do:** `_style_of()` substitutes `Standard` for empty. Anything comparing
+styles must do the same or it will miss the most common style in the file.
+
+## 16. A dimension's effective scale is the style's, not the header's
+
+`$DIMSCALE` in the header is not what draws an existing dimension. Measured on
+`draw_test/123.dxf`: header `$DIMSCALE = 50`, style `ISO-25` `dimscale = 1.0`, and
+the 18 dimension texts rendered 2.0 units tall. Writing 50 into the style took
+`text_scale` to zero; the header had said 50 all along and changed nothing.
+
+**Do:** when a `text_scale` finding is dimension text, read and fix
+`dimstyle.dxf.dimscale`. Do not report "the header is already 50, so it is fine".
+
+## 17. `txt.shx`'s missing glyphs cannot be detected from font metrics
+
+Every programmatic route to "does this font have `²`" gives the wrong answer:
+
+| approach | what it says | why it is wrong |
+|---|---|---|
+| `fontTools` cmap | `simhei.ttf` has **no** U+00B2 | AutoCAD renders `m²` in it: TrueType falls back, SHX does not |
+| ezdxf `make_font(...).text_path("²")` | always renders, even for `txt` | a missing font silently becomes the default font |
+| width of the char vs a space | non-zero for both | a fallback glyph and a drawn glyph both have advance |
+
+So the check is **not** based on glyph introspection. It flags the one case that
+is documented and screenshot-verified — an SHX style with no big font — and
+leaves TrueType alone. Anything else would be a guess wearing a number.
 
 ## Why these numbers
 
@@ -230,6 +271,7 @@ rule 6 — an incomplete scan is not a pass.
 | `TEXT_SCALE_MIN_SAMPLES` | 5 | Below five texts there is no meaningful median. |
 | `DUPLICATE_TOLERANCE` | 0.25 | Two texts match when content is identical **and** boxes are within a quarter text height. Zero misses a paste that landed one unit off; a full height would merge genuinely separate labels. |
 | `ISO_3098_MIN_TEXT_MM` | 2.5 | ISO 3098 minimum lettering height, and the same constant `engineering/critique.py` uses, so this check and the project's critique agree. |
+| `_glyphless_style` | SHX + no bigfont | The only glyph-coverage rule that can be justified: an SHX stroke font's table is fixed, a big font is exactly what adds CJK, and TrueType's fallback makes any cmap test wrong (item 17). |
 | `FLATTEN` | 0.5 | Chord deviation when flattening arcs, in drawing units — fine enough that a curve-through-text test does not miss a shallow crossing. |
 | `MAX_BLOCK_DEPTH` | 8 | Deeper nesting is reported as skipped rather than silently truncated. |
 | `_WIDTH_RATIO` | per font | See [accuracy.md](accuracy.md). |

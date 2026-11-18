@@ -97,7 +97,10 @@
 | MTEXT 底对齐（attachment 7-9）位置偏低一字高 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因六：1-3 顶 / 4-6 中 / 7-9 底，必须比绝对坐标 |
 | `accoreconsole` 跑 LISP 没反应、卡在 `命令:` | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 4 验证方法末段：本机未授权，改走 COM |
 | `SaveAs("x.dxf")` 得到 `x.dxf.dwg` | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 4 验证方法：显式 `SaveAs(path, 61)` |
-| 想让工具自动检查图中文字有没有交叠 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 3 处理：`python -m tools.text_overlap FILE.dxf` |
+| 想让工具自动检查图中文字有没有交叠 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 3 处理：`python -m tools.text_overlap FILE.dxf`，七类检查 |
+| **`m²`/中文在图上看着没事，打印出来缺字符** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | `text_glyphless`：`Standard`=`txt.shx` 无 CJK 与 `²`/`Ø`/`±` 字形，AutoCAD 静默不画。**TrueType 会回退、SHX 不会**，所以不能用 cmap 判断。改样式字体为 `simsun.ttc`/`simhei.ttf` |
+| **改了 `$DIMSCALE` 标注文字还是很小** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 生效的是**样式**的 `dimscale`，不是图纸头。实测 `123.dxf`：头 50、样式 `ISO-25` 为 1.0，18 个标注只有 2.0 高。改样式即归零 |
+| **同一行字既报 `text_text` 又报 `text_duplicate`** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 已修：同一对只报一次，保留 `text_duplicate`（删除比挪开正确） |
 | **块内文字角度错了：65° 量成 110°** | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十（**已更正**）：`transform()` 保留旋转，是测量代码又补一次；只有 TEXT 暴露 |
 | 非均匀缩放 / 镜像的块，文字框怎么算都不对 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十末段：平行四边形，报 `not_checked`，别给近似值 |
 | 表格合并后单元格文字位置会错吗 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | 2 根因十五：**不会**，`*T` 块已反映合并结果，15→13 格实测 |

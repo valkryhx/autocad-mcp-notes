@@ -1,73 +1,28 @@
-draw_test/gpu_dc_100.dxf  [Model]
-  measured 319 text entities (310 in the space, 0 from 0 block/table container(s)), 377 curves
-  12 finding(s): 2 text-on-text, 4 text-on-geometry, 6 too small on paper
+draw_test/123_dxf.dxf  [Model]
+  measured 142 text entities (57 in the space, 67 from 3 block/table container(s)), 103 curves
+  4 finding(s): 1 text-on-geometry, 2 duplicate, 1 with unplottable glyphs
 
-  1. text_text at (12510, 24039)
-     D7 [A-TEXT] C
-     crosses D2 [A-TEXT] text B
-     overlap 41% of the smaller box
-     fix: entity_move(handle='D7', dx=286.5, dy=0.0)  -> 286.50 drawing units right
-          verified: tested against every other text box and every curve in this drawing: this shift collides with none of them
-          one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change
-
-  2. text_text at (35490, 24039)
-     D9 [A-TEXT] C
-     crosses D4 [A-TEXT] text B
-     overlap 41% of the smaller box
-     fix: entity_move(handle='D9', dx=286.5, dy=0.0)  -> 286.50 drawing units right
-          verified: tested against every other text box and every curve in this drawing: this shift collides with none of them
-          one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change
-
-  3. text_curve at (27600, 27480)
-     252 [A-TEXT] CRAC-5
-     crosses C1 [A-AXIS] LINE
-     note: LINE crosses this text
-     fix: entity_move(handle='252', dx=484.529, dy=0.0)  -> 484.53 drawing units right
-          verified: tested against every other text box and every curve in this drawing: this shift collides with none of them
-          one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change
-
-  4. text_curve at (22800, 28050)
-     253 [A-TEXT] GPU 智算机房
-     crosses BC [A-AXIS] LINE
-     note: LINE crosses this text
-     fix: entity_move(handle='253', dx=324.392, dy=0.0)  -> 324.39 drawing units right
-          verified: tested against every other text box and every curve in this drawing: this shift collides with none of them
-          one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change
-
-  5. text_curve at (22800, 27420)
-     254 [A-TEXT] 288.0 m² 100 柜 × 12 kW
-     crosses BC [A-AXIS] LINE
-     note: LINE crosses this text
-     no safe shift: no short shift clears this text - something is on every side of it. Move or shorten whatever crosses it, or resize the text
-
-  6. text_curve at (30350, 23400)
-     28C [A-TEXT] 监控大屏 4×4
-     crosses B5 [A-DOOR] LINE
+  1. text_curve at (16075, 825)
+     50A in 4F5 [A-SYMB-T-N] TELECOM EQUIPMENT ROOM [style Standard]
+     crosses 501 in 4F5 [A-SYMB-T-N] LINE
+     text is inside block reference 4F5
      note: 2 curve(s) cross this text
-     fix: entity_move(handle='28C', dx=0.0, dy=-636.794)  -> 636.79 drawing units down
-          verified: tested against every other text box and every curve in this drawing: this shift collides with none of them
-          one option: moving whatever crosses the text may suit the drawing better, and an intended crossing needs no change
+     this text lives in block reference 4F5; move or edit it inside the block definition, not here. ``entity_move`` needs the handle of a top-level entity
 
-  7. text_illegible at (23100, 29800)
-     21B [A-TEXT] 列头柜
-     note: 10 text(s) print at 1.5 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm
+  2. text_duplicate at (1946, 2530)
+     10F [A-ROOM-T-N] 01 [style Standard]
+     crosses 8DB [A-ROOM-T-N] text 01 [style Standard]
+     note: the same text twice in the same place - one of them is a duplicate. Delete one rather than moving it
+     fix: entity_delete(handle='8DB')
+          keep 10F and delete 8DB, or the other way round - the two are identical apart from their handle
 
-  8. text_illegible at (17100, 29800)
-     E6 [A-TEXT] 01
-     note: 100 text(s) print at 1.6 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm
+  3. text_duplicate at (2208, 2330)
+     110 [A-ROOM-T-N] 54.48 m² [style CN]
+     crosses 8DC [A-ROOM-T-N] text 54.48 m² [style CN]
+     note: the same text twice in the same place - one of them is a duplicate. Delete one rather than moving it
+     fix: entity_delete(handle='8DC')
+          keep 110 and delete 8DC, or the other way round - the two are identical apart from their handle
 
-  9. text_illegible at (15100, 14500)
-     25E [A-TEXT] AP1
-     note: 8 text(s) print at 1.8 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm
-
-  10. text_illegible at (15750, 17400)
-     26E [A-TEXT] DP1
-     note: 6 text(s) print at 2 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm
-
-  11. text_illegible at (24000, 33700)
-     238 [A-TEXT] 热通道
-     note: 3 text(s) print at 2.2 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm
-
-  12. text_illegible at (24000, 31300)
-     236 [A-TEXT] 封闭冷通道
-     note: 2 text(s) print at 2.3 mm on layout 'Layout1'; ISO 3098 sets the minimum at 2.5 mm
+  4. text_glyphless at (17825, 825)
+     50C in 4F5 [A-SYMB-T-N] 54.48 m² [style Standard]
+     note: 4 text(s) use style 'Standard' (font 'txt', no CJK/Unicode fallback) and contain '²': those characters do not plot. Point the text at a TrueType style (simsun.ttc / simhei.ttf) - and write the Unicode character, not a %% escape

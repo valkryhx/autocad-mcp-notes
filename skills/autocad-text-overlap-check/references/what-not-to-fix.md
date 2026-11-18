@@ -59,9 +59,29 @@ re-check it visually before editing.
 
 ### `text_scale` on a drawing where every dimension is affected
 
-This is one global setting, not many hand edits. Fixing `$DIMSCALE` once clears
-all of them. **Do not resize the individual texts** — that leaves the drawing
-with a broken dimension style and correct-looking text, which is worse.
+This is one global setting, not many hand edits — but change it in the right
+place. **The style's `dimscale`, not the file header's `$DIMSCALE`.** Measured on
+`draw_test/123.dxf`: header `$DIMSCALE = 50`, style `ISO-25` `dimscale = 1.0`, and
+the 18 dimension texts rendered 2.0 units tall. Setting the style value to 50
+cleared it; the header value had been 50 the whole time and did nothing.
+
+**Do not resize the individual texts** — that leaves a broken dimension style and
+correct-looking text, which is worse.
+
+### `text_glyphless` on text that looks right on screen
+
+It *is* right on screen; it is wrong on paper. `txt.shx` has no `²`/`Ø`/`±`/CJK,
+and AutoCAD draws those characters as nothing without warning. The entity, the
+string and `entity_list` all agree the text is fine.
+
+Do not "fix" it by rewriting the characters as `%%` escapes — on a TrueType style
+those print literally.
+
+### A TrueType style is never a `text_glyphless` finding
+
+Even though `simhei.ttf`'s cmap has no U+00B2, AutoCAD renders `m²` in it: TrueType
+falls back, SHX does not. If a glyph is missing in a TrueType style and you can see
+it on screen, it plots — no finding means no defect here.
 
 ### `text_duplicate` on two rooms both labelled 走廊
 

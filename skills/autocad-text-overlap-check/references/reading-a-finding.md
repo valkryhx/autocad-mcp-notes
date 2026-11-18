@@ -19,9 +19,14 @@ exists — a verified way out.
 | line | meaning |
 |---|---|
 | `3. text_curve at (x, y)` | finding 3, its kind, and the centre of the offending text box |
-| `252 [A-TEXT] CRAC-5` | handle `252`, on layer `A-TEXT`, reading `CRAC-5` |
+| `252 [A-TEXT] CRAC-5 [style CN]` | handle `252`, layer `A-TEXT`, reading `CRAC-5`, text style `CN` |
 | `crosses C1 [A-AXIS] LINE` | the other entity: handle `C1`, layer `A-AXIS`, a LINE |
 | `fix: entity_move(...)` | a concrete call that clears it |
+
+The `[style ...]` tag is not decoration. A style whose font lacks the glyphs for
+the text is a defect in its own right (`text_glyphless`), and the style name is
+the thing you have to change — it cannot be inferred from the layer or the
+content.
 
 The header before the list tells you the scope, and it is worth reading:
 
@@ -105,12 +110,26 @@ something it was previously hiding from.
 
 ### `text_duplicate` — the same text twice
 
-Delete one with `ERASE`, then confirm the survivor's content is the right one.
+The finding already carries the fix:
+
+```
+fix: entity_delete(handle='8DB')
+     keep 10F and delete 8DB, or the other way round - the two are identical
+     apart from their handle
+```
+
+Either one can go; the report names the later of the two only as a default.
 Matters for counts: a door schedule that says 4 while the plan shows 5 tags is
 usually this.
 
-Note the check only fires when the boxes **also** coincide, so two rooms both
-labelled "走廊" are not reported.
+**The pair is reported once, not twice.** Two coincident texts also trip
+`text_text`, and listing both made one defect look like two — measured on
+`draw_test/123.dxf`, where two duplicate pairs produced four rows. Only the
+`text_duplicate` row survives, because it is the better instruction: a shift
+would leave both texts in the drawing.
+
+The check only fires when the boxes **also** coincide, so two rooms both
+labelled 走廊 are not reported.
 
 ### `text_illegible` — too small once printed
 
@@ -122,6 +141,49 @@ the viewport's scale. A 160-unit label prints at 1.6 mm at 1:100 and 8 mm at
 - If a few are, raise just those.
 - ISO 3098's minimum is 2.5 mm for lettering; the project's own critique uses
   the same constant (`engineering/critique.py`).
+
+**The usual root cause is a dimension style, not the drawing header.** `$DIMSCALE`
+in the file header is not what AutoCAD uses to draw an existing dimension — the
+style it references is. Measured on `draw_test/123.dxf`: the header said
+`$DIMSCALE = 50` while style `ISO-25` had `dimscale = 1.0`, and its 18 dimension
+texts rendered 2.0 units tall against a 125 median. Setting `dimscale = 50` on
+the **style** took the finding to zero.
+
+### `text_glyphless` — the characters never plot
+
+```
+text_glyphless at (3847, 3662)
+   EC [A-ROOM-T-N] 52.92 m² [style Standard]
+   note: 7 text(s) use style 'Standard' (font 'txt', no CJK/Unicode fallback)
+         and contain '²': those characters do not plot. Point the text at a
+         TrueType style (simsun.ttc / simhei.ttf) ...
+```
+
+`Standard` is `txt.shx`, a stroke font whose glyph table has no CJK and no
+`²`/`Ø`/`±`. AutoCAD stores the string, returns it unchanged, draws nothing, and
+does not warn. Every other tool agrees the text is fine, because it is — the
+*font* is not.
+
+Note the `[style ...]` tag on the text line. That is why the report prints it:
+the fix is a style change, and the style is not visible from layer and content.
+
+**How to fix**
+
+1. In AutoCAD: `STYLE` → pick the style → change the font to a TrueType face
+   (`simsun.ttc`, `simhei.ttf`, `msyh.ttc`), or
+2. point the offending texts at an existing TrueType style, or
+3. edit the style's font in the DXF.
+
+Do **not** rewrite the characters as `%%d` / `%%178` escapes — those are SHX
+control codes and they will print literally as `%%d` once the style is TrueType.
+Write the Unicode character.
+
+**What is deliberately not flagged:** a TrueType style is never reported, even
+when the font's cmap lacks the character. Measured: `simhei.ttf` has no U+00B2 in
+its cmap, yet AutoCAD renders `m²` in it — TrueType gets a fallback that SHX does
+not. A cmap-based test would raise false alarms, so the check sticks to the
+documented, screenshot-verified SHX failure. An SHX style **with a big font** is
+also skipped, because a big font is exactly what supplies the CJK glyphs.
 
 ## The `not_checked` list
 

@@ -52,11 +52,13 @@ def _human(report: dict) -> str:
         parts.append(f"{counts['text_duplicate']} duplicate")
     if counts["text_illegible"]:
         parts.append(f"{counts['text_illegible']} too small on paper")
+    if counts["text_glyphless"]:
+        parts.append(f"{counts['text_glyphless']} with unplottable glyphs")
     # Every kind `detect()` knows about must appear here, or a finding count
     # silently disappears from the summary while still being in the list.
     listed = sum(counts[kind] for kind in (
         "text_text", "text_curve", "text_scale", "text_hidden",
-        "text_duplicate", "text_illegible",
+        "text_duplicate", "text_illegible", "text_glyphless",
     ))
     summary = ", ".join(parts) if parts else "all clean"
     lines.append(f"  {len(findings)} finding(s): {summary}")
@@ -77,13 +79,21 @@ def _human(report: dict) -> str:
         where = finding.get("at")
         spot = f" at ({where[0]:.0f}, {where[1]:.0f})" if where else ""
         lines.append(f"  {index}. {finding['kind']}{spot}")
-        lines.append(f"     {finding['handle']} [{finding['layer']}] {_excerpt(finding['text'])}")
+        style = finding.get("style")
+        tag = f" [style {style}]" if style else ""
+        lines.append(
+            f"     {finding['handle']} [{finding['layer']}] "
+            f"{_excerpt(finding['text'])}{tag}"
+        )
         other = finding.get("with")
         if other:
             label = other["type"]
             if other.get("text") is not None:
                 label += f" {_excerpt(other['text'])}"
-            lines.append(f"     crosses {other['handle']} [{other['layer']}] {label}")
+            other_tag = f" [style {other['style']}]" if other.get("style") else ""
+            lines.append(
+                f"     crosses {other['handle']} [{other['layer']}] {label}{other_tag}"
+            )
         if finding.get("overlap_ratio") is not None and finding["kind"] == "text_text":
             lines.append(f"     overlap {finding['overlap_ratio'] * 100:.0f}% of the smaller box")
         if finding.get("in_block"):
@@ -102,8 +112,16 @@ def _human(report: dict) -> str:
                     lines.append(f"          verified: {fix['verified']}")
                 if fix.get("note"):
                     lines.append(f"          {fix['note']}")
+            elif fix.get("tool") == "entity_delete":
+                args = fix["args"]
+                lines.append(f"     fix: entity_delete(handle={args['handle']!r})")
+                if fix.get("note"):
+                    lines.append(f"          {fix['note']}")
             elif fix.get("note"):
-                lines.append(f"     no safe shift: {fix['note']}")
+                # The prefix has to match the reason: a block-nested text is not
+                # "boxed in", it simply has no movable handle here.
+                prefix = "" if fix.get("tool") is None and "block" in fix["note"] else "no safe shift: "
+                lines.append(f"     {prefix}{fix['note']}")
         lines.append("")
     return "\n".join(lines).rstrip()
 

@@ -40,7 +40,7 @@ cd D:/git_codes/test_Autocad_MCP
 D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe tools/text_overlap/tests_overlap.py
 ```
 
-**24 test functions / 60 assertions, none needing AutoCAD.** They cover the
+**27 test functions / 75 assertions, none needing AutoCAD.** They cover the
 error paths, every entity type read, blocks (rotated / nested / non-uniform),
 tables, dimensions, multileaders, and the regression tests for the bugs listed
 in [pitfalls.md](pitfalls.md).
@@ -65,6 +65,9 @@ assertion, so the failing clause is named, not counted.
 | `test_no_blocks_flag` | `--no-blocks` must say the block text was not checked. |
 | `test_merged_table_cells_keep_correct_text` | a merged cell in a real AutoCAD-authored table must read as one cell, correctly placed. |
 | `test_illegible_text_uses_viewport_scale` | 160 units is illegible at 1:100 and legible at 1:20, and a model-only file gets no rows. |
+| `test_glyphless_style_is_reported` | an SHX style with `²` is reported once per style, ASCII in the same style is silent, TrueType is silent, and an SHX style **with a big font** is silent. |
+| `test_duplicate_pair_is_reported_once` | a coincident pair yields one `text_duplicate` row and **no** `text_text` row, while two different texts overlapping still yield `text_text`. |
+| `test_block_text_says_why_it_has_no_fix` | a collision inside a block offers no `entity_move` and says to edit the block definition instead. |
 | `test_near_miss_is_quiet` | the 15% threshold must not fire on a well-spaced pair. |
 
 ## Verifying against AutoCAD

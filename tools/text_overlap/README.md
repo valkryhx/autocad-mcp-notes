@@ -27,8 +27,9 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 | `text_curve` | 一条曲线穿过文字框内缩 5% 后的核心区 |
 | `text_scale` | 文字高度偏离全图中位数超过 4 倍 |
 | `text_hidden` | 文字在关闭/冻结的图层上（打印不出来） |
-| `text_duplicate` | 同一文字叠在同一位置（复制粘贴留下的） |
+| `text_duplicate` | 同一文字叠在同一位置（复制粘贴留下的），附 `entity_delete` 建议 |
 | `text_illegible` | 经视口折算后，**纸面**尺寸低于 ISO 3098 的 2.5 mm |
+| `text_glyphless` | 用了 SHX 样式（`txt.shx` 等），而它的字形表里没有这些字符 |
 
 15% 的下限放过紧贴的表格内边距；5% 的内缩放过下划线、外框、引线碰到角上的情况
 ——只有真正**穿过**文字才算。
@@ -40,6 +41,16 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 `text_illegible` 是唯一按**纸上毫米**判断的检查：模型字高 × 每单位毫米数 ÷ 视口的
 `view_height / height`。没有图纸空间视口的纯模型图不出条目——没有图纸，就无所谓
 纸上太小。`$INSUNITS` 为 0（无单位）时同样跳过并说明。
+
+`text_glyphless` 抓的是「图上正常、打印缺字」：`Standard` 的 `txt.shx` 是单线字体，
+字形表里没有 CJK 也没有 `²`/`Ø`/`±`，AutoCAD **静默不画**。只报 SHX 且无 `bigfont`
+的样式——TrueType 缺字形时会回退到别的字体照样画，实测 `simhei.ttf` 的 cmap 里
+没有 U+00B2 却能正常渲染 `m²`，所以任何基于 cmap 的判断都会误报。详见
+[`docs/20261118-text-overlap-check.md`](../../docs/20261118-text-overlap-check.md) 第四轮。
+
+报表里文字会带 `[style 名字]`。`text_glyphless` 的修法是换样式，而样式没法从图层
+和内容推出来，所以必须印出来。DXF 里属性缺席即等于 `Standard`，`_style_of()` 负责补
+这个默认值。
 
 **块、表格、标注里的文字都会被读**，不再跳过：
 
@@ -77,7 +88,7 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 ## 验收
 
 ```bash
-# 不需要 AutoCAD（24 个函数 / 60 条断言）
+# 不需要 AutoCAD（27 个函数 / 75 条断言）
 python tools/text_overlap/tests_overlap.py
 
 # 需要 AutoCAD 在运行
