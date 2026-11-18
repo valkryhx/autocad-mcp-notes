@@ -520,7 +520,11 @@ def test_merged_table_cells_keep_correct_text() -> None:
         )
     )
     if not os.path.exists(path):
-        print("  SKIP  fixture not available (needs AutoCAD to regenerate)")
+        # The fixture is committed, so its absence is a broken checkout, not a
+        # reason to pass. Skipping here would report "all tests passed" while
+        # the claim this test exists to pin went unchecked - the exact failure
+        # AGENTS.md rule 6 forbids.
+        check("merged table fixture is present", False, f"missing {path}")
         return
     from tools.text_overlap.overlap import _collect_texts
 

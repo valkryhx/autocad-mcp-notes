@@ -17,6 +17,19 @@ draw_test/*.dwg
 draw_test/*.pdf
 draw_test/**/
 
+# 例外：文字交叠检查的验收夹具与脚本。
+# `tools/text_overlap/tests_overlap.py` 会读 merged_table.dxf（缺了它测试直接失败），
+# `skills/.../references/verification.md` 让人 cd 进去跑那四个脚本，
+# 而 com_mtext_bb.csv / anchors_bb.csv 是 AutoCAD 的实测基准——没有 AutoCAD 就再生不了，
+# 它们是 accuracy.md 里每一个精度数字的出处。被排除的目录 git 不会进去，
+# 所以子目录要先解禁，再挑文件。
+!draw_test/overlap_proto/
+!draw_test/overlap_proto/*.py
+!draw_test/overlap_proto/verify/
+draw_test/overlap_proto/verify/mleader2.dxf
+draw_test/overlap_proto/verify/dim_textbox.txt
+draw_test/overlap_proto/verify/probe_out.dxf
+
 # Python
 __pycache__/
 *.py[cod]
