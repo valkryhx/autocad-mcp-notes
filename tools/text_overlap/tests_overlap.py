@@ -1416,6 +1416,41 @@ def test_physical_checks_are_opt_out_like_the_rest() -> None:
     check("solid_overlap counted",
           report["by_kind"].get("solid_overlap") == 0, str(report["by_kind"]))
 
+def test_swept_box_follows_the_sweep_not_a_fixed_quadrant():
+    """The reported "clear this area" box must be the disc the door really sweeps.
+
+    The note used to compute it as "hinge - radius .. hinge" on both axes, which
+    is only the 180..270 quarter. Measured on a 4-door room (2026-11-19): door BA
+    hinges at (3000,100) and sweeps 90..180, so its quadrant is x 2000..3000 by
+    y 100..1100 - but the note printed y -900..100, sending the drafter to move
+    the rack DOWN, into the wall, instead of up into the room.
+
+    Four quarters, each with the box it must produce:
+    """
+    from tools.text_overlap.physical import Swing
+
+    cases = [
+        # (start, end, expected box for hinge=(0,0), r=1000, label)
+        (0.0, 90.0, (0.0, 0.0, 1000.0, 1000.0), "0..90   (NE)"),
+        (90.0, 180.0, (-1000.0, 0.0, 0.0, 1000.0), "90..180 (NW)"),
+        (180.0, 270.0, (-1000.0, -1000.0, 0.0, 0.0), "180..270 (SW)"),
+        (270.0, 360.0, (0.0, -1000.0, 1000.0, 0.0), "270..360 (SE)"),
+    ]
+    print("\nPHYSICAL: the swept box follows the sweep")
+    for start, end, expected, label in cases:
+        swing = Swing("1", "A-DOOR-E-N", (0.0, 0.0), 1000.0, start, end)
+        got = swing.swept_box()
+        ok = all(abs(a - b) < 1e-6 for a, b in zip(got, expected))
+        check(f"{label} box is {tuple(round(v) for v in expected)}",
+              ok, f"got {tuple(round(v) for v in got)}")
+
+    # A real door from the drawing that caught this: hinge (3000,100), 90..180.
+    swing = Swing("BA", "A-DOOR-E-N", (3000.0, 100.0), 1000.0, 90.0, 180.0)
+    box = swing.swept_box()
+    check("door BA sweeps up into the room, not into the wall",
+          box == (2000.0, 100.0, 3000.0, 1100.0),
+          f"got {box}")
+
 def main() -> int:
     for test in (
         test_empty_drawing,
@@ -1461,6 +1496,7 @@ def main() -> int:
         test_solid_overlap_is_reported,
         test_adjacent_racks_are_not_a_clash,
         test_physical_checks_are_opt_out_like_the_rest,
+        test_swept_box_follows_the_sweep_not_a_fixed_quadrant,
     ):
         test()
     print()

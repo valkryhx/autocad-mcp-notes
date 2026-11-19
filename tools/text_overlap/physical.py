@@ -101,6 +101,30 @@ class Swing:
         self.start_deg = start_deg
         self.end_deg = end_deg
 
+    def swept_box(self) -> Box:
+        """The quarter disc's axis-aligned bounding box.
+
+        Not "hinge - radius .. hinge" on both axes: that is only the 180..270
+        quarter. A door at 90..180 sweeps UP from its hinge, one at 270..0 sweeps
+        right and down. The box is the union of the hinge, the two arc ends, and
+        every cardinal angle the sweep passes through - a quarter disc always
+        includes exactly one, but a half disc includes two.
+        """
+        hx, hy = self.hinge
+        r = self.radius
+        angles = [self.start_deg, self.end_deg]
+        # The cardinal angles the sweep passes through decide the box on each
+        # side: a 90..180 quarter reaches -X but never +Y past the hinge.
+        angles += [a for a in (0.0, 90.0, 180.0, 270.0)
+                   if _angle_in(a, self.start_deg, self.end_deg)]
+        xs = [hx]
+        ys = [hy]
+        for angle in angles:
+            rad = math.radians(angle)
+            xs.append(hx + r * math.cos(rad))
+            ys.append(hy + r * math.sin(rad))
+        return (min(xs), min(ys), max(xs), max(ys))
+
     def blocks(self, box: Box) -> bool:
         """True when `box` reaches more than SWING_MARGIN into the swept disc.
 
@@ -279,6 +303,7 @@ def physical_findings(space, skipped: list[str] | None = None) -> list[Finding]:
                 continue                       # the leaf itself is not "blocked"
             if not swing.blocks(solid.box):
                 continue
+            swept = swing.swept_box()
             findings.append(
                 Finding(
                     kind="opening_blocked",
@@ -300,10 +325,12 @@ def physical_findings(space, skipped: list[str] | None = None) -> list[Finding]:
                         + (f" ({solid.block})" if solid.block else "")
                         + f" stands inside the swing of door {swing.handle} "
                         f"(hinge {swing.hinge[0]:.0f},{swing.hinge[1]:.0f}, "
-                        f"leaf {swing.radius:.0f}); the doorway cannot open. "
-                        f"Move {solid.address} clear of the swept quarter disc "
-                        f"(x {swing.hinge[0] - swing.radius:.0f}..{swing.hinge[0]:.0f}, "
-                        f"y {swing.hinge[1] - swing.radius:.0f}..{swing.hinge[1]:.0f})."
+                        f"leaf {swing.radius:.0f}, sweep "
+                        f"{swing.start_deg:.0f}..{swing.end_deg:.0f} deg); "
+                        f"the doorway cannot open. Move {solid.address} clear of "
+                        f"the swept quarter disc "
+                        f"(x {swept[0]:.0f}..{swept[2]:.0f}, "
+                        f"y {swept[1]:.0f}..{swept[3]:.0f})."
                     ),
                 )
             )
