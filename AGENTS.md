@@ -17,7 +17,7 @@
 |---|---|
 | [0. 环境基线](#0-本机环境基线) | 路径、版本、配置位置 |
 | [1. 优先用 premium 技能](#1-绘图请优先使用-premium-技能) | 六段工作流、按输入源分流 |
-| [2. 九条铁律](#2-九条必须遵守的规则) | 禁止的捷径 |
+| [2. 十条铁律](#2-十条必须遵守的规则) | 禁止的捷径 |
 | [3. 调用预算](#3-调用预算超过-3-次连续同类调用--漏用了批量工具) | 批量工具替代逐个调用 |
 | [4. 单位与坐标](#4-单位与坐标新手最容易踩) | 默认米，画前先声明 |
 | [5. 双引擎边界](#5-双引擎能力边界) | 实时 vs 无头 |
@@ -91,7 +91,7 @@
 
 ---
 
-## 2. 九条必须遵守的规则
+## 2. 十条必须遵守的规则
 
 技能把最容易造成「自信的错误答案」的做法列为禁忌，逐条展开：
 
@@ -112,6 +112,14 @@
 8. **线宽 `-3` 是 Default，不是 ByLayer**（`-1` 才是 ByLayer）。报告时写 `"ByLayer"`；`property_override` 检查会列出不跟随图层的实体。
 
 9. **读错误的 `kind` 和 `hint`，不要读那句话本身。** 只有 `retryable: true`（表示什么都没写入）才意味着「原样重发这次调用」。
+
+10. **保存失败不是小事，它让整个工作无法收尾 —— 而且会骗人。** `0x80210063` 时不写入磁盘，
+   旧文件还在，之后拿那个路径做的任何复核都在量**改动前**的图。所以：
+   ①DXF 只存得进"本次会话 `SaveAs` 新获得的路径"，`Open` 来的路径不行；
+   ②`Close(True)` 不报错但静默丢弃全部改动，绝不当代替保存；
+   ③"存住了"只能用**文件上**复测证明（`drawing_verify_requirements(artifact_path=...)`），
+   `saved: true` 说的是文档不是文件。详见[第 6 节保存](#保存收尾必读dxf-有坑)与技能
+   `references/saving-formats.md`。
 
 ---
 
@@ -181,6 +189,46 @@
 
 > ⚠️ **`cad_batch` 的步骤键是 `args`，不是 `arguments`**。写错会整批拒绝：`step 0 has unexpected key(s) ['arguments']; a step is {'tool', 'args', 'bind'}`。
 > `cad_batch` 默认 `on_error=rollback`，任一步失败则**一步都不执行**。
+
+### 保存（收尾必读，DXF 有坑）
+
+**核心规律：DXF 只能保存到「本次会话里由 `SaveAs` 新获得的路径」；文档 `Open` 进来的那个路径写不了。**
+
+| 你的情况 | 正确做法 |
+|---|---|
+| 迭代画图 | 用 **DWG** 当工作文件，`drawing_save()` 直写，随便存几次 |
+| 交付 / 交换 | DXF + PDF，`drawing_deliver` 写副本 |
+| 必须迭代 DXF | **先 `drawing_save_as` 换新路径**，之后 `drawing_save` 是直写 |
+| 已在 DXF 上改了一堆 | `drawing_save()` 会自动往返降级，能用但每次都降级 |
+
+```text
+drawing_save()                                   → ok; 有 save_fallback 说明走了往返
+drawing_save_as(path="D:/work/plan_r2.dxf")      → 换新路径，本会话之后可直写
+drawing_finalize(save_path=..., requirements=...)→ artifact_integrity.reverified
+drawing_deliver(output_dir=..., requirements=...)→ 写副本，不动当前文档
+```
+
+判断"到底存住了没"，看这三样，缺一不可：
+
+1. `drawing_save` / `drawing_finalize` 返回 `ok: true`
+2. `drawing_info().saved is True`
+3. **在文件上**复测：`drawing_verify_requirements(artifact_path=...)`
+
+> ⚠️ `saved: true` 说的是文档，不是文件。用文件说话。
+
+**三个绝不能当保存手段的**（都实测过）：
+
+| 禁用 | 后果 |
+|---|---|
+| `doc.Close(True)` | 不报错但**静默丢弃改动**（1078 进 1078 出，新加的圆消失） |
+| `doc.SendCommand("_.QSAVE\n")` | 停在提示符，占死 COM 线程 >120s，ESC 解不开，只能重启 AutoCAD |
+| `SaveAs("x.dxf")` 不带类型 | 写成 `x.dxf.dwg`。必须传 `61`（ac2013_dxf） |
+
+**界面里按 Ctrl+S 的情况**：MCP 的降级只覆盖 `drawing_save()`，**人工 Ctrl+S 不经过 MCP**，
+在 DXF 上照样失败。让用户先 `SaveAs` 到新名字，或改用 DWG。
+
+完整的 8 用例矩阵、救援有效期、两种格式的可复制代码：技能
+`~/.claude/skills/autocad-mcp-premium/references/saving-formats.md`。
 
 ### 查询 / 描述工具
 
@@ -357,7 +405,8 @@ drawing_verify_requirements(manifest_path=...)→ 复算哈希，确认无过期
 | **中文文字框宽度比 AutoCAD 小 33%，且不报错** | 样式字体名是**完整路径**（COM 赋值会写成 `C:\Windows\Fonts\simhei.ttf`），ezdxf 对这个名字解析出退化度量（`baseline=0`） | 喂给 `fonts.make_font` 前取 `os.path.basename`。两种写法都返回 `TrueTypeFont`，类型相同、不抛异常 |
 | **`COM SaveAs` 之后用户那张图「改了名」，活动文档变成 `tc_dwg_xxx.dxf`** | `SaveAs` 改变的是**文档本身的指向**，不是「导出副本」。作用在用户已打开的 DWG 上，那张图就不再是它的 DWG；临时文件被删后，会话里挂着已不存在的路径，下次保存写到 `%TEMP%`。磁盘上的 DWG 没坏，所以不易发现 | **绝不 `SaveAs` 不是自己打开的文档**。先把 DWG 复制到临时目录、只打开**副本**、保存前核对 `document.FullName` 是副本、`finally` 里 `Close(False)`。见 [`docs/20261120-dwg-saveas-repoint.md`](docs/20261120-dwg-saveas-repoint.md) |
 | **文字交叠检查指向 `.dwg` 只报「cannot read」、什么都不查** | 检查器本身是纯 ezdxf，但 DWG 不是 DXF；本机 ODA 没装、`accoreconsole` 未授权 | 已支持：`python -m tools.text_overlap FILE.dwg` 经运行中的 AutoCAD 转临时 DXF。AutoCAD 没开时给的是**出路**（`SaveAs(path, 61)`）而非纯错误 |
-| **`drawing_save` 报「保存文档时出错」，错误码 `0x80210063`；`Save()` / `SaveAs(同路径)` 都失败** | AutoCAD 2026 对 **DXF 格式**「打开磁盘上已存在的文件再保存」的缺陷（facility 33 = AutoCAD 自身错误设施，code 99）。**任意已存在的 DXF 都失败**。物理原因：`SaveAs` 改指向后**原文件句柄不释放**，AutoCAD 要覆盖写自己还锁着的文件 | **已修（`b874e25`）**：`drawing_save()` 自动降级为「SaveAs 临时 → 关闭文档 → 复制回目标 → 重开重绑」往返，返回带 `save_fallback: {reason, method}`。实测单次与连续 5 次均成功。DWG 无此开销，仍首选。见 [`docs/20261119-dxf-save-fails-after-reopen.md`](docs/20261119-dxf-save-fails-after-reopen.md) |
+| **`drawing_save` 报「保存文档时出错」，错误码 `0x80210063`；`Save()` / `SaveAs(同路径)` 都失败** | AutoCAD 2026 的 **DXF 保存路径**缺陷（facility 33 = AutoCAD 自身错误设施，code 99）。**精确规律：DXF 只能保存到「本次会话里由 `SaveAs` 新获得的路径」；文档 `Open` 进来的那个路径写不了**（8 用例矩阵实测）。物理原因：`SaveAs` 改指向后**原文件句柄不释放**，AutoCAD 要覆盖写自己还锁着的文件 | **已修（`b874e25`）**：`drawing_save()` 自动降级为「SaveAs 临时 → 关闭文档 → 复制回目标 → 重开重绑」往返，返回带 `save_fallback: {reason, method}`。**更省事：先 `drawing_save_as` 换新路径，之后 `drawing_save` 就是直写**。DWG 无此限制。见 [`docs/20261119-dxf-save-fails-after-reopen.md`](docs/20261119-dxf-save-fails-after-reopen.md)、技能 `references/saving-formats.md` |
+| **`SaveAs` 到新名字后能存了，但重开文件后又存不了** | "另存为新名字"的救援**只在本次会话内有效**。实测：`SaveAs(新名)` → `Save()` OK（可反复），但**关闭重开后 `Save()` 又失败**，需再 `SaveAs` 一次 | 这是每次会话都要重做的动作，不是一次性修复。要长期可存就**用 DWG**；DXF 每次开会话先 `drawing_save_as` |
 | **在 AutoCAD 界面里对 DXF 按 Ctrl+S 存不了，报「保存文档时出错」** | **同一个 DXF 缺陷，MCP 的补偿覆盖不到它**。`drawing_save()` 走往返降级，人工 Ctrl+S 走 `Document.Save()`，不经过 MCP。实测同一会话：DXF `Save()` → `0x80210063`，同刻 DWG 副本 `Save()` → 成功 | ①迭代画图**用 DWG 当工作文件**，Ctrl+S 随时可用；②手上是 DXF 就用 `drawing_save()` 保存，**别按 Ctrl+S**；③或 `SaveAs` 到**新文件名**（新路径可以成功）。判断存没存看 `drawing_info` 的 `saved`，别只看标题栏 `*` |
 | **用 `Close(True)` 当保存手段，文件没变却以为存了** | `Close(True)` 在「打开已存在的 DXF」上**不报错但静默丢弃改动**。实测 1078 实体进、1078 实体出，新加的圆消失 | **绝不用 `Close(True)` 保存**。保存只用 `Save`/`SaveAs`；关闭一律 `Close(False)`（改动已由前一步保存） |
 | **`doc.SendCommand("_.QSAVE\n")` 卡死 COM 线程超过 120s，ESC 也解不开** | 命令停在提示符上会独占 STA 线程 | 保存只用 ActiveX `Save`/`SaveAs`，**绝不用命令**。已卡死只能重启 AutoCAD |
@@ -479,8 +528,7 @@ claude mcp list | grep autocad      # 应显示 ✔ Connected
 | 2026-11-21 | [`docs/20261121-nested-block-via-and-com-table.md`](docs/20261121-nested-block-via-and-com-table.md) | **`drawing9.py` 验收暴露的嵌套块 `via` 缺陷**：`member.copy()` 不携带 handle（副本不进 entitydb），`str(None)` = `'None'`，报告写出「in block reference None」，唯一可执行的那句变成不可执行。**一层嵌套时完全正确**——递归 bug 需要递归形状的夹具才能暴露。修法：最外层 handle 沿递归下传（`_via`）+ 回归测试。另三条 COM 坑：`AddTable` 插入点要 **VARIANT 数组**（元组报 `E_INVALIDARG`）、写单元格内容用 **`SetText`** 而非 `SetTextString`（后者签名不同，会把中文当 int 解析）、AutoCAD 忙时 `RPC_E_CALL_REJECTED` 是**立即拒绝**需自己退避重试（pywin32 无消息过滤器） | ✅ 已修复 |
 | 2026-11-19 | [`docs/20261119-text-anchor-group10-11.md`](docs/20261119-text-anchor-group10-11.md) | **文字检查器把 TEXT 的组码 10/11 读反**：同一张图 DXF 报 0 条、DWG 报 1 条，文字框差 70 单位（半个字高）。规范是「72/73 都为零用组码 10，任一非零用组码 11」；生成 DXF 里两锚点恰好相同所以看不见，AutoCAD 存 DWG 时按 `valign=2` 重算插入点才显形。**影响面覆盖全部用 `set_placement()` 写的文字**。修 `_measure_text` 两分支 + 7 条断言回归测试（夹具让组码 10/11 取不同值，否则对 bug 免疫）。另记 `Layout.Measurement` 读不了（需写模式） | ✅ 已修复 |
 | 2026-11-19 | [`docs/20261119-system-status-stale-proxy-p0.md`](docs/20261119-system-status-stale-proxy-p0.md) | **P0：`system_status` 缓存死代理**。它在自己 `_sync` 里吞掉异常返回状态、**没驱逐死代理**；`_acad_app()` 只在 `"app" not in _COM_STATE` 时才重新 Dispatch，于是死代理永久复用——杀 acad 后每次调用都报同一句 `RPC 服务器不可用`，重启 AutoCAD 无效，只能杀 MCP 服务。它又是出故障后第一个被调用的工具，**一次失联变永久瘫痪**。修：抽 `_drop_app_if_connection_lost()` 共用判据 + 5 个回归测试（含「非连接错误不得驱逐」的反向断言）。`COM_CALL_TIMEOUT` 180→**3600**（实测 `cad_batch` 191.6s、`drawing_screenshot` 193.9s）。含诊断顺序：窗口 `*` → `proxy_dropped` → journal `server_instance` 数。**已合并 main (`c2e0ddc`)**，重启后实测 5 轮杀 acad 全部自愈、服务实例未更换 | ✅ 已修复 |
-| 2026-11-19 | [`docs/20261119-dxf-save-fails-after-reopen.md`](docs/20261119-dxf-save-fails-after-reopen.md) | **DXF 关闭后重开再保存必失败**（`0x80210063`，facility 33 = AutoCAD 自身错误设施），DWG 正常。逐项排除锁/权限/路径/`ISAVEPERCENT`/`ISAVEBAK`/ezdxf 来源；任意已存在的 DXF 都失败。物理原因：`SaveAs` 改指向后**原文件句柄不释放**，要关闭文档才放。**`Close(True)` 不是绕法**——不报错但静默丢改动（1078 进 1078 出）。**修法（`b874e25` 合并 main）**：`drawing_save()` 自动降级为「SaveAs 临时 → 关闭 → 复制回目标 → 重开重绑」，实测单次 + 连续 5 次均成功、内容无丢失；9 个回归测试（含「真失败不得误判为本问题」的反向断言） | ✅ 已修复 |
-
+| 2026-11-19 | [`docs/20261119-dxf-save-fails-after-reopen.md`](docs/20261119-dxf-save-fails-after-reopen.md) | **DXF 保存失败**（`0x80210063`，facility 33 = AutoCAD 自身错误设施），DWG 正常。逐项排除锁/权限/路径/`ISAVEPERCENT`/`ISAVEBAK`/ezdxf 来源。物理原因：`SaveAs` 改指向后**原文件句柄不释放**，要关闭文档才放。**`Close(True)` 不是绕法**——不报错但静默丢改动（1078 进 1078 出）。**修法（`b874e25` 合并 main）**：`drawing_save()` 自动降级为「SaveAs 临时 → 关闭 → 复制回目标 → 重开重绑」，9 个回归测试。**二次核定修正过宽论断**：初版"任意已存的 DXF 都失败"→ 经 8 用例矩阵收窄为「**只能存到本次会话 `SaveAs` 新获得的路径**」；`SaveAs(新路径)` 成功后本会话可反复 `Save()`（解释了 `draw_test/` 为何有大量存成功的 DXF）；但**救援在关闭后失效**，重开需再 `SaveAs`。技能新增 `references/saving-formats.md`（矩阵 + 两种格式可执行代码 + 7/7 验证脚本） | ✅ 已修复 + 技能已更新 |
 | 2026-11-19 | [`docs/20261119-acad-not-quiescent-doc-calls-rejected.md`](docs/20261119-acad-not-quiescent-doc-calls-rejected.md) | **AutoCAD 卡在未结束命令上：应用级 COM 能通、文档级全拒**。所有工具报 `RPC_E_CALL_REJECTED`、`system_status` 报 `connected: false`，但 AutoCAD 窗口看起来完全健康（无弹窗、不挂死、进程正常）。**决定性判据 `GetAcadState().IsQuiescent = False`**——它挂在 Application 对象上，不受文档级过滤影响，是全线拒绝时唯一还答话的接口。逐项排除：全系统无 `#32770`、`IsHungAppWindow=False`、`GetGUIThreadInfo.flags=0`（不在菜单/移动循环）、CPU 仅 9.4%、6 线程全 `Wait/UserRequest`、MTA 重试同样被拒。**"忙"要分两种**：CPU 高才是真在算；CPU 低 + 线程等输入是**等一个永远不来的输入**，等 60 s 和重启都不管用。**解法：ESC 必须 `PostMessage` 到框架的全部后代窗口**（实测 36 个，含 `ACADDM_CHILD_DXGI_FLIP_MODE_VIEW_CLASS` 视口），只发主框架 3 轮全无效；广播一轮即 `IsQuiescent=True`、`Documents.Count=2` 恢复。已封装 `scripts/clear_pending_command.py` | ✅ 已解决 |
 
 > 新记录请按日期顺序追加到上表，并同步更新索引文件的「按症状检索」表。

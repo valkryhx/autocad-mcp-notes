@@ -26,24 +26,58 @@ facility 33（AutoCAD 自己的错误设施）、code 99。项目此前未记录
 ## 根因
 
 **不是** MCP 的 bug，也不是文件锁、路径、权限或 `ISAVEPERCENT` —— 逐项排除过。
-是 AutoCAD 2026 对 **DXF 格式**文档「打开已存在的文件后再保存」的行为缺陷；DWG 完全正常。
+是 AutoCAD 2026 对 **DXF 格式**文档保存路径的行为缺陷；DWG 完全正常。
 
-### 对比矩阵（全部实测，每项独立跑）
+### 精确规律（2026-11-19 二次核定，8 用例矩阵）
+
+初版结论写作"任意已存在的 DXF 都失败"——**这个说法过宽，已修正**。
+真实约束是**文档打开时所在的那个路径**，不是扩展名本身：
+
+| # | 文档经历的路径 | `Save()` | 落盘 |
+|---|---|---|---|
+| C1 | `Add()` → `SaveAs(a.dxf,61)` → 改 → `Save()` | ✅ | 写入 |
+| C2 | `SaveAs(a.dxf)` → **关闭** → `Open(a.dxf)` → 改 → `Save()` | ❌ `0x80210063` | 未变 |
+| C3 | 复制 → `Open(a.dxf)` → 改 → `Save()` | ❌ `0x80210063` | 未变 |
+| C4 | 复制 → `Open(a.dxf)` → 改 → `SaveAs(a.dxf)`（同路径） | ❌ `0x80210063` | 未变 |
+| C5 | 复制 → `Open(a.dxf)` → 改 → `SaveAs(b.dxf)`（**新路径**） | ✅ | 写入 |
+| C6 | 复制 → `Open(a.dwg)` → 改 → `Save()` | ✅ | 写入 |
+| C7 | `Add()` → `SaveAs(a.dwg,64)` → 改 → `Save()` | ✅ | 写入 |
+| C8 | 复制 → `Open(a.dxf)` → `SaveAs(b.dxf)` → 改 → `Save()` | ✅ | 写入 |
+
+> **规律：DXF 只能保存到「本次会话里由 `SaveAs` 新获得的路径」。
+> 文档 `Open` 进来的那个路径写不了，`Save()` 和 `SaveAs(同路径)` 都不行。**
+
+这解释了为什么 `draw_test/` 里那么多 DXF 是"保存成功"的——它们由 ezdxf 无头生成，
+或由 `SaveAs` 写到新路径，都不是"打开旧 DXF 再覆盖写"。
+
+### 救援的有效期：仅限本次会话
+
+`SaveAs` 到新名字能救这个文档**直到关闭**；重开后缺陷回归，要再 `SaveAs` 一次。
+实测（`scripts/save_rescue_lifetime.py`）：
+
+```text
+D0  Open(已有 DXF) -> 改 -> Save()          FAIL  0x80210063
+D1  SaveAs(新名字) -> 改 -> Save()          OK
+    再 Save() 一次                           OK
+D2  重开那个被救过的文件 -> 改 -> Save()    FAIL  0x80210063   ← 回归
+D3  再 SaveAs(又一个新名字) -> Save()       OK
+```
+
+所以"另存为新名字"是**每次会话都要重做的动作**，不是一次性修复。
+
+### 旧矩阵（2026-11-19 首次记录，部分行结论已被上表细化）
 
 | 场景 | 结果 |
 |---|---|
 | DXF：新建 → SaveAs → **不关闭** → 改 → Save | ✅ 成功 |
 | DXF：SaveAs → **关闭** → 重开 → 改 → Save | ❌ `0x80210063` |
 | DXF：SaveAs → **关闭** → 重开 → 改 → SaveAs(同一路径) | ❌ `0x80210063` |
-| **DXF：任意已存在的文件 → 打开 → 改 → Save** | ❌ **全部失败**（试了 3 个不同来源的 DXF） |
+| DXF：已存在的文件 → 打开 → 改 → Save | ❌ **全部失败**（试了 3 个不同来源的 DXF） |
 | DWG：SaveAs → 关闭 → 重开 → 改 → Save | ✅ 成功 |
 | DXF 在项目目录 / TEMP 目录 | ❌ 都失败 |
 | DWG 在项目目录 / TEMP 目录 | ✅ 都成功 |
 | DXF：`ISAVEPERCENT=0`（强制全量保存）后 Save | ❌ 仍失败 |
 | DWG SaveAs 到新路径 | ✅ 成功 |
-
-**规律：只要是"打开一个磁盘上已存在的 DXF"，保存就失败；只要文档是本次会话里
-`SaveAs` 出来的（还没经历关闭重开），保存就正常。**
 
 ### 一个容易误判的细节
 
@@ -52,6 +86,11 @@ facility 33（AutoCAD 自己的错误设施）、code 99。项目此前未记录
 所以"`SaveAs` 到新路径 → 再 `SaveAs` 回原路径"也会失败。
 
 这解释了为什么会出现 `0x80210063`：AutoCAD 要覆盖写一个它自己仍持有独占句柄的文件。
+
+**另一条同样后果的路径**：`Documents.Open(path, True)` 的第二个参数是 `ReadOnly`。
+传 `True` 会只读打开，之后 `Save()` 报的错误与本问题**完全同码**（`0x80210063`），
+但根因只是自己设的只读标志。做对照实验时必须传 `False` 并回读 `doc.ReadOnly` 确认，
+否则会把"我开的只读"记成"AutoCAD 的缺陷"。
 
 已排除的假设：
 - 不是文件被别处占用（`open(p,'r+b')` 成功，无 `.dwl`/`.dwl2`）
@@ -142,6 +181,7 @@ DXF 在 AutoCAD 界面里就是存不了，DWG 可以。
 | 迭代画图 | **用 DWG 当工作文件**，Ctrl+S 随时可用 |
 | 手上是 DXF 且必须保内容 | 用 `drawing_save()`（MCP 会走往返降级），**别按 Ctrl+S** |
 | 手上是 DXF，想 Ctrl+S | 另存为新文件名（`SaveAs` 到新路径可以成功），或先转 DWG |
+| 想让 DXF 这次会话能反复 Ctrl+S | 先 `SaveAs` 到一个新名字，之后的 `Save()` 就是直写 |
 
 > 判断"我的改动到底存没存"：看 `drawing_info` 的 `saved` 字段，别只看标题栏的 `*`。
 > `saved: false` + 标题带 `*` = 改动只在内存里。本例中 `multi_save.dxf` 就是
@@ -149,18 +189,23 @@ DXF 在 AutoCAD 界面里就是存不了，DWG 可以。
 
 ### 手动绕法（不经 MCP 时）
 
-如果直接用 COM 脚本操作 DXF，仍需自己处理：
+如果直接用 COM 脚本操作 DXF，按下面选：
 
 ```python
 # ❌ 打开已存在的 DXF 后，这两个都失败
 doc.Save()
 doc.SaveAs(同上路径, 61)
 
-# ✅ 写出到一个新路径（不改指向就不会踩锁）
+# ✅ 写出到一个新路径（不改指向就不会踩锁）—— 之后本会话可反复 Save()
 doc.SaveAs(new_path, 61)
+doc.Save()            # ✅ 同一个文档，新路径，直接写
 
-# ✅ 或用和 MCP 一样的往返法
-doc.SaveAs(tmp, 61); doc.Close(False); shutil.copy2(tmp, target)
+# ✅ 或必须回原文件名时：用和 MCP 一样的往返法
+doc.SaveAs(tmp, 61); doc.Close(False); shutil.move(tmp, target)
+doc = app.Documents.Open(target, False)   # 重开后 Save() 又会失败，属预期
+
+# ⚠️ 这个"救援"只活到关闭为止
+#    D2 实测：重开被救过的文件 -> Save() 又失败；要再 SaveAs 一次
 ```
 
 ⚠️ **绝不要用 `Close(True)` 当保存手段**——实测它不报错但**静默丢弃改动**
@@ -170,6 +215,7 @@ doc.SaveAs(tmp, 61); doc.Close(False); shutil.copy2(tmp, target)
 
 1. **`drawing_save()` 现在能保存 DXF 了**（往返降级），但返回里会带
    `save_fallback` —— 看到它就知道走了三步往返，不是直接保存。
+   每次都走降级，因为往返后文档又指向原路径，下一次 `Save()` 同样会失败。**更省事的做法是先 `drawing_save_as` 换个新路径**，之后 `drawing_save` 就是直写。
 2. **工作文件优先用 DWG**：可反复 `Save()`，没有往返开销。
 3. **千万别把 `Close(True)` 当保存手段**：它不报错但静默丢改动。
    这是本项目里最危险的一个假象，实测 1078 实体进、1078 实体出、新加的圆消失。
@@ -197,3 +243,11 @@ doc.SaveAs(tmp, 61); doc.Close(False); shutil.copy2(tmp, target)
   `Document.Save()` → `0x80210063`，而同一时刻的 DWG 副本 `Save()` 成功。
   MCP 的补偿只在 `drawing_save()` 内，不覆盖界面操作。另记一个易误判点：
   `Documents.Open(path, True)` 是只读打开，其保存失败错误与本问题**完全同码**。
+- 2026-11-19 **二次核定，修正过宽论断**。初版写"任意已存在的 DXF 都失败"，
+  经 8 用例矩阵（`scripts/save_matrix.py`）收窄为：**DXF 只能保存到本次会话里
+  由 `SaveAs` 新获得的路径**；`Open` 进来的那个路径写不了。C5/C8 证明
+  `SaveAs(新路径)` 成功且之后可反复 `Save()`（这解释了 `draw_test/` 里为何有
+  大量保存成功的 DXF——它们是 ezdxf 无头生成或 `SaveAs` 到新路径的）。
+  另测出**救援有效期**（`scripts/save_rescue_lifetime.py`）：D2 重开被救过的文件后
+  `Save()` 又失败，需再 `SaveAs` 一次。技能已新增
+  `references/saving-formats.md` 承载完整矩阵与两种格式的正确代码。
