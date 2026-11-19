@@ -6,7 +6,7 @@ description: Use for any AutoCAD drawing whose text may collide with other text 
 # AutoCAD text overlap check
 
 A label that overlaps other content is a defect a reader sees immediately and a
-CAD check usually misses. This skill ships a measured text box and **six**
+CAD check usually misses. This skill ships a measured text box and **seven**
 checks built on it.
 
 ## Run it
@@ -14,13 +14,22 @@ checks built on it.
 ```bash
 cd D:/git_codes/test_Autocad_MCP
 D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe -m tools.text_overlap FILE.dxf
+D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe -m tools.text_overlap FILE.dwg
 ```
 
-Options: `--json`, `--layout NAME`, `--quiet`, `--no-blocks`.
+Options: `--json`, `--layout NAME`, `--quiet`, `--no-blocks`, `--no-com`.
 Exit code: `0` nothing found, `1` findings, `2` unreadable input.
 
-**DXF only.** From a DWG: `SAVEAS` a DXF in AutoCAD, or COM `SaveAs(path, 61)`
-(without the type argument AutoCAD appends `.dwg`).
+**A `.dwg` works too**, if AutoCAD is running: the tool converts a *copy* of it
+through COM and checks the result. No ODA here, and `accoreconsole` is not
+licensed, so a live AutoCAD is the only route. The copy is deliberate — `SaveAs`
+re-points the *document*, so running it on a drawing the user has open would turn
+their DWG into a temp DXF and delete it. See
+[tools/text_overlap/README.md](../../tools/text_overlap/README.md) for the five
+safeguards.
+
+Without AutoCAD, `--no-com` or no running instance gives the way out
+(`SaveAs(path, 61)`), not just an error.
 
 ## Read these next, in this order
 
@@ -117,7 +126,7 @@ Reported text also carries its **style name**, because that is what fixes a
 
 Re-run the check **on the saved file**. A fix measured in memory is not a fix.
 The checker's own suite is in [references/verification.md](references/verification.md);
-33 test functions / 100 assertions run without AutoCAD.
+35 test functions / 106 assertions run without AutoCAD.
 
 ## When the check says nothing
 

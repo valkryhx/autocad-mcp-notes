@@ -7,15 +7,40 @@ handle、图层、文字内容和精确位置。
 
 ```bash
 python -m tools.text_overlap FILE.dxf            # 人读的报表
+python -m tools.text_overlap FILE.dwg            # 直接吃 DWG（见下）
 python -m tools.text_overlap FILE.dxf --json     # 机读
 python -m tools.text_overlap FILE.dxf --layout Layout1
 python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
+python -m tools.text_overlap FILE.dwg --no-com   # 不许碰 AutoCAD
 ```
 
 退出码：`0` 无交叠，`1` 有交叠，`2` 文件读不了。
 
-**只吃 DXF。** DWG 要先在 AutoCAD 里 `SaveAs` 成 DXF（`AcSaveAsType` **61**），
-或用 MCP 的 `drawing_save_as` 写一份。
+## DWG 怎么读
+
+检查本身是纯 ezdxf，不需要 AutoCAD。但 DWG 不是 DXF，本机两条离线路都不通：
+ODA File Converter 没装（ezdxf 唯一的 DWG 通道），`accoreconsole` 提示
+「许可证无效」且带 `/s` 卡死。
+
+所以 DWG 走**运行中的 AutoCAD**（COM），转成临时 DXF 再查。安全规则只有一条：
+
+> **绝不 `SaveAs` 用户打开的文档。**
+
+`SaveAs` 改变的是**文档**本身的指向。作用在用户开着的图上，那张图就不再是它的
+DWG，变成我们的临时 DXF，然后被删掉——磁盘上的 DWG 没坏，但用户的会话里挂着一个
+已不存在的文件，下次保存会写到 `%TEMP%`。**这个 bug 真的发生过**（活动文档一度变成
+`tc_dwg_ij_admuf.dxf`），所以现在的实现是：
+
+1. 把 DWG **复制**到临时目录；
+2. 只打开这个副本；
+3. `SaveAs` 前**核对副本的 `FullName`**，不是副本就放弃；
+4. 无论成败都以 `Close(False)` 关掉副本（只关我们自己的）；
+5. 还原原来的活动文档。
+
+用户开的文档全程不保存、不关闭、不被改指向。转换完对源文件做哈希比对可证。
+
+AutoCAD 没开时给的是**出路**而不是错误：装 ODA、或者先 `SaveAs(路径, 61)` 出 DXF。
+AutoCAD 开着但 COM 无响应时提示**先按 ESC**（modal 状态会让 COM 全部拒接而进程还活着）。
 
 依赖 ezdxf 与 fontTools（`D:/git_codes/Autocad-MCP/.venv` 里都有）。
 

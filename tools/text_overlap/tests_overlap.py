@@ -1004,6 +1004,134 @@ def test_errors() -> None:
         check("bad layout raises ValueError", "this file has" in str(exc))
 
 
+def test_dwg_conversion_never_touches_open_documents() -> None:
+    """A DWG read must not SaveAs the user's document.
+
+    ``SaveAs`` re-points the *document*. Applied to a drawing the user has open,
+    it stops being their DWG and becomes a temp DXF that then gets deleted - the
+    session is left holding a file that no longer exists, and the next save
+    writes under ``%TEMP%``. That is exactly what the first version of
+    ``dwg.py`` did (the active document became ``tc_dwg_ij_admuf.dxf``).
+
+    This test runs without AutoCAD by substituting a fake app whose document
+    records every ``SaveAs`` target, and asserts the copy is what was saved.
+    """
+    print("DWG conversion safety")
+    from tools.text_overlap import dwg
+
+    saved_paths: list[str] = []
+    closed: list[bool] = []
+    opened_paths: list[str] = []
+
+    class FakeDoc:
+        def __init__(self, full_name: str) -> None:
+            self.FullName = full_name
+
+        def SaveAs(self, path: str, _type: int) -> None:
+            saved_paths.append(path)
+            # AutoCAD creates the file; the module then checks it exists.
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write("fake dxf")
+
+        def Close(self, save: bool) -> None:
+            closed.append(save)
+
+        def Activate(self) -> None:
+            return None
+
+    class FakeDocs:
+        Count = 0
+
+        def Open(self, path: str, read_only: bool) -> FakeDoc:
+            opened_paths.append(path)
+            return FakeDoc(path)
+
+    class FakeApp:
+        Documents = FakeDocs()
+
+        @property
+        def ActiveDocument(self) -> FakeDoc:
+            raise RuntimeError("no active document")
+
+    source = os.path.join(tempfile.gettempdir(), "ov_safety_src.dwg")
+    with open(source, "wb") as fh:
+        fh.write(b"pretend this is a dwg")
+
+    real_app = dwg._app
+    dwg._app = lambda: FakeApp()
+    try:
+        dxf_path, how = dwg.to_dxf(source)
+    finally:
+        dwg._app = real_app
+
+    check(
+        "a copy is opened, not the user's file",
+        bool(opened_paths) and opened_paths[0] != source and opened_paths[0].endswith(".dwg"),
+        f"opened {opened_paths}",
+    )
+    check(
+        "SaveAs runs only on the copy",
+        bool(saved_paths) and saved_paths[0] != source and "tc_dwg_" in saved_paths[0],
+        f"saved {saved_paths}",
+    )
+    check(
+        "the copy is closed without saving",
+        closed == [False],
+        f"closed with save flags {closed}",
+    )
+    check(
+        "the returned DXF is announced in 'how'",
+        "temporary copy" in how,
+        how,
+    )
+    for leftover in (source, *(os.path.dirname(dxf_path) and [dxf_path] or [])):
+        try:
+            os.remove(leftover)
+        except OSError:
+            pass
+
+
+def test_dwg_without_autocad_explains_the_way_out() -> None:
+    """No AutoCAD must produce a remedy, not just an error."""
+    print("DWG conversion without AutoCAD")
+    from tools.text_overlap import dwg
+
+    def boom() -> None:
+        raise dwg.DwgUnavailable(
+            "AutoCAD is not running", "Start AutoCAD and open the drawing"
+        )
+
+    class FakeDocs:
+        Count = 0
+
+        def Open(self, path: str, read_only: bool) -> None:
+            raise AssertionError("must not open anything when COM is unavailable")
+
+    class FakeApp:
+        Documents = FakeDocs()
+
+    source = os.path.join(tempfile.gettempdir(), "ov_noautocad.dwg")
+    with open(source, "wb") as fh:
+        fh.write(b"pretend this is a dwg")
+
+    real_app = dwg._app
+    dwg._app = boom
+    try:
+        try:
+            dwg.to_dxf(source)
+            check("no AutoCAD raises DwgUnavailable", False, "no exception")
+        except dwg.DwgUnavailable as exc:
+            check("no AutoCAD raises DwgUnavailable", True)
+            check(
+                "the error says what to do instead",
+                "Start AutoCAD" in exc.remedy,
+                exc.remedy,
+            )
+    finally:
+        dwg._app = real_app
+        os.remove(source)
+
+
 def main() -> int:
     for test in (
         test_empty_drawing,
@@ -1039,6 +1167,8 @@ def main() -> int:
         test_non_uniform_block_is_reported,
         test_no_blocks_flag,
         test_errors,
+        test_dwg_conversion_never_touches_open_documents,
+        test_dwg_without_autocad_explains_the_way_out,
     ):
         test()
     print()

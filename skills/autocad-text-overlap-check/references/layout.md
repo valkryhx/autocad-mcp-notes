@@ -4,7 +4,7 @@
 
 ```
 skills/autocad-text-overlap-check/
-├── SKILL.md                      the entry point; six checks, run command
+├── SKILL.md                      the entry point; seven checks, run command
 ├── references/
 │   ├── reading-a-finding.md      report format, per-kind guidance, fixes
 │   ├── what-not-to-fix.md        normal drafting that gets reported
@@ -27,9 +27,10 @@ tools/text_overlap/
 ├── __init__.py        re-exports detect, Finding, TEXT_TYPES
 ├── __main__.py        the CLI: argument parsing, human and --json output
 ├── textbox.py         the measured text box (the accuracy lives here)
-├── overlap.py         the six checks, block/table/dimension readers, fix search
+├── overlap.py         the seven checks, block/table/dimension readers, fix search
 ├── README.md          short usage note for the tool on its own
-└── tests_overlap.py   24 functions / 60 assertions, no AutoCAD needed
+├── dwg.py             DWG -> temp DXF via a running AutoCAD (safely)
+└── tests_overlap.py   35 functions / 106 assertions, no AutoCAD needed
 ```
 
 `textbox.py` and `overlap.py` are separate on purpose: the box is a measurement
@@ -82,7 +83,7 @@ investigation was long enough to be worth its own file — per AGENTS.md §11.
 
 ## Editing this skill
 
-- **`SKILL.md` stays short.** It is a router: run command, the six checks in one
+- **`SKILL.md` stays short.** It is a router: run command, the seven checks in one
   table, and where to read next. Detail belongs in `references/`, or the skill
   stops being scannable.
 - **Every reference file must be reachable from `SKILL.md`.** A file nobody is

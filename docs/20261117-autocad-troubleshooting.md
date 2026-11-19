@@ -41,6 +41,7 @@
 | 2026-11-18 | [`20261118-text-overlap-check.md`](20261118-text-overlap-check.md) | **文字交叠检查**：ezdxf 能做，但**不能用自带 bbox**——组码 41=0 表示「不换行」，ezdxf 传成宽度 0 给 `text_wrap` 导致每个词切一行，框大出 6.8 倍。另 7 个坑：AutoCAD 返回**字形墨迹框**而非 advance 宽、字体**全路径名**让 ezdxf 静默退化 33%、`total_height`/`baseline` 在部分字体退化、行距是 **5/3 字高**、attachment 7-9 方向相反、字体宽度需按字体标定 2.89%、msyh 无法标定。产物 `tools/text_overlap/` + `skills/autocad-text-overlap-check/`，三项验收通过：干净图 0 误报 / 植入 6 类全检出 / 9 对齐点 ≤2.89 单位；310 个真实 MTEXT 中 89%≤3%、97%≤5% | ✅ 已实现并验收 |
 
 | 2026-11-19 | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | **`PrintWindow` 截图把 AutoCAD COM 搞卡死**：GPU 合成导致截图全白，更致命的是 `WM_PRINT` 同步重绘请求打乱 AutoCAD 渲染线程 → COM 自动化服务器不可用（`<unknown>.Count`、`RPC_E_CALL_REJECTED`、`MK_E_UNAVAILABLE`），但进程还活着。`RPC_E_CALL_REJECTED` 的提示「等在命令提示符」有误导性，按 ESC 才有效。含**杀进程前如何用窗口标题 `*` 判断未保存文档**（COM 已失效时唯一可用手段）、`accoreconsole` 本机确认不可用、以及「让用户自己看图比自己造渲染可靠」的教训 | ✅ 已解决（按 ESC 恢复） |
+| 2026-11-20 | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | **①检查器指向 `.dwg` 只报错不检查**（本机无 ODA、`accoreconsole` 未授权），现已经运行中的 AutoCAD 转临时 DXF 支持直读 DWG；**②`SaveAs` 把用户打开的文档改了指向**——活动文档变成 `tc_dwg_xxx.dxf`，临时文件删除后会话挂着已不存在的路径，下次保存写到 `%TEMP%`。根因是 `SaveAs` 的语义是「这个文档现在是那个文件」而非「导出副本」。修法：复制副本 + 只对副本 `SaveAs` + 保存前核对 `FullName` + `finally Close(False)`，并用哈希证明原件未被改动。含 2 个不需 AutoCAD 的回归测试 | ✅ 已修复 |
 
 ---
 
@@ -49,6 +50,9 @@
 | 症状 | 文件 | 章节 |
 |---|---|---|
 | **`PrintWindow` 截图全白，随后 COM 全部失效** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 现象一/二/三、处理 1 |
+| **文字交叠检查指向 `.dwg` 报 `cannot read`、什么都不查** | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | 现象一 / 根因一 / 处理一 |
+| **`SaveAs` 后活动文档变成 `tc_dwg_xxx.dxf`、用户那张图「改了名」** | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | 现象二 / 根因二 / 处理二（复制副本 + 核对 `FullName`） |
+| **怎样证明「没动过用户的东西」** | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | 处理二：**哈希比对**，别用「看起来正常」 |
 | **COM 报 `<unknown>.Count` 或 `MK_E_UNAVAILABLE`（操作无法使用）** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 根因、处理 1 |
 | **想 `taskkill` 但怕丢未保存文档** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 处理「杀进程前必须确认」 |
 | `accoreconsole` 带 `/s` 卡住 `exit=124`、提示「许可证无效」 | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 预防 5 |

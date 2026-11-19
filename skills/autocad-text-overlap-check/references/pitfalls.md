@@ -310,6 +310,39 @@ the note said so.
 **Do:** when only part of a group can move, set `moves_alone` and name the
 handles that stay. The fix is still worth printing; it just must not look free.
 
+## 21. `SaveAs` re-points the user's open document
+
+Reading a DWG through COM has one way to go catastrophically wrong, and this is
+it. The first version of `dwg.py` opened the DWG, called `SaveAs(temp.dxf, 61)`,
+and closed it. When the drawing was **already open**, `app.Documents.Open()`
+handed back the *user's* document (or AutoCAD reused it), so `SaveAs` ran on that
+document. The result, observed:
+
+```
+ActiveDocument.Name = tc_dwg_ij_admuf.dxf
+FullName           = C:\Users\...\AppData\Local\Temp\tc_dwg_ij_admuf.dxf
+```
+
+The DWG on disk was fine. But the session now held a document pointing at a temp
+file that the tool then deleted — the next `SAVE` writes under `%TEMP%`, and the
+user has no idea why their drawing "changed name". `SaveAs` does not mean "export
+a copy"; it means "this document is now that file".
+
+**Do:** never `SaveAs` a document you did not open. Copy the DWG to a temp
+directory, open **the copy**, assert `document.FullName` is the copy before
+saving, and `Close(False)` in a `finally`. The check is cheap and it is the only
+thing standing between a routine conversion and a wrecked session:
+
+```python
+if not _same_file(document.FullName, dwg_copy):
+    document.Close(False)
+    raise DwgUnavailable("AutoCAD opened a different file than the copy", ...)
+```
+
+`test_dwg_conversion_never_touches_open_documents` fails if this regresses; it
+runs without AutoCAD by substituting a fake app that records every `SaveAs`
+target.
+
 ## Adding a check
 
 1. Return `Finding` objects with `kind`, `handle`, `layer`, `text`, `box`, and
