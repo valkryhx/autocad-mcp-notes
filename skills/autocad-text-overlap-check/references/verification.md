@@ -40,7 +40,7 @@ cd D:/git_codes/test_Autocad_MCP
 D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe tools/text_overlap/tests_overlap.py
 ```
 
-**36 test functions / 109 assertions, none needing AutoCAD.** They cover the
+**44 test functions / 135 assertions, none needing AutoCAD.** They cover the
 error paths, every entity type read, blocks (rotated / nested / non-uniform),
 tables, dimensions, multileaders, and the regression tests for the bugs listed
 in [pitfalls.md](pitfalls.md).

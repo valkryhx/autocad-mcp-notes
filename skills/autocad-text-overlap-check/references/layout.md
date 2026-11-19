@@ -31,7 +31,7 @@ tools/text_overlap/
 ├── physical.py        the two collision checks: door swings, solid footprints
 ├── README.md          short usage note for the tool on its own
 ├── dwg.py             DWG -> temp DXF via a running AutoCAD (safely)
-└── tests_overlap.py   36 functions / 109 assertions, no AutoCAD needed
+└── tests_overlap.py   44 functions / 135 assertions, no AutoCAD needed
 ```
 
 `textbox.py` and `overlap.py` are separate on purpose: the box is a measurement
