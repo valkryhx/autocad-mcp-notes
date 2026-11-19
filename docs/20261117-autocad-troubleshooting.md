@@ -42,6 +42,7 @@
 
 | 2026-11-19 | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | **`PrintWindow` 截图把 AutoCAD COM 搞卡死**：GPU 合成导致截图全白，更致命的是 `WM_PRINT` 同步重绘请求打乱 AutoCAD 渲染线程 → COM 自动化服务器不可用（`<unknown>.Count`、`RPC_E_CALL_REJECTED`、`MK_E_UNAVAILABLE`），但进程还活着。`RPC_E_CALL_REJECTED` 的提示「等在命令提示符」有误导性，按 ESC 才有效。含**杀进程前如何用窗口标题 `*` 判断未保存文档**（COM 已失效时唯一可用手段）、`accoreconsole` 本机确认不可用、以及「让用户自己看图比自己造渲染可靠」的教训 | ✅ 已解决（按 ESC 恢复） |
 | 2026-11-20 | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | **①检查器指向 `.dwg` 只报错不检查**（本机无 ODA、`accoreconsole` 未授权），现已经运行中的 AutoCAD 转临时 DXF 支持直读 DWG；**②`SaveAs` 把用户打开的文档改了指向**——活动文档变成 `tc_dwg_xxx.dxf`，临时文件删除后会话挂着已不存在的路径，下次保存写到 `%TEMP%`。根因是 `SaveAs` 的语义是「这个文档现在是那个文件」而非「导出副本」。修法：复制副本 + 只对副本 `SaveAs` + 保存前核对 `FullName` + `finally Close(False)`，并用哈希证明原件未被改动。含 2 个不需 AutoCAD 的回归测试 | ✅ 已修复 |
+| 2026-11-21 | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | **嵌套块 `via` 变成字符串 `'None'`**：`member.copy()` 不携带 handle（副本没进 entitydb），`str(None)` 得到 `'None'`，报告写出「in block reference None」，唯一可执行的那句变成不可执行。一层嵌套时完全正确，**递归 bug 需要递归形状的夹具**。修法：最外层 handle 沿递归下传（`_via`）+ 回归测试。另三条 COM 坑：`AddTable` 插入点要 **VARIANT 数组**（元组报 `E_INVALIDARG`）、写单元格用 `SetText` 而非 `SetTextString`、AutoCAD 忙时 `RPC_E_CALL_REJECTED` 需**自己退避重试**（pywin32 无消息过滤器） | ✅ 已修复 |
 
 ---
 
@@ -53,6 +54,12 @@
 | **文字交叠检查指向 `.dwg` 报 `cannot read`、什么都不查** | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | 现象一 / 根因一 / 处理一 |
 | **`SaveAs` 后活动文档变成 `tc_dwg_xxx.dxf`、用户那张图「改了名」** | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | 现象二 / 根因二 / 处理二（复制副本 + 核对 `FullName`） |
 | **怎样证明「没动过用户的东西」** | [`20261120-dwg-saveas-repoint.md`](20261120-dwg-saveas-repoint.md) | 处理二：**哈希比对**，别用「看起来正常」 |
+| **报告里写「in block reference None」、句句都是 `None`** | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | 现象一：`copy()` 丢 handle，`str(None)` → `'None'` |
+| **`str(None)` 得到 `'None'` 而不是空串** | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | 预防 2：取 handle 转字符串前先判 None |
+| **`AddTable` 报 `E_INVALIDARG`（-2147024809），参数个数明明对** | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | 现象二：插入点要 **VARIANT 数组**，不是元组 |
+| **`SetCellTextString(r,c,"中文")` 报 `invalid literal for int()`** | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | 现象三：写内容用 `SetText`，设属性用 `SetCell*` |
+| **`SetCellTextStyle` 报「未找到主键」** | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | 现象三末段：样式必须在**该文档**里存在 |
+| **COM 反复 `RPC_E_CALL_REJECTED`（-2147418111），但进程活着** | [`20261121-nested-block-via-and-com-table.md`](20261121-nested-block-via-and-com-table.md) | 现象四/处理四：AutoCAD 忙是**立即拒绝**，自己退避重试；pywin32 无消息过滤器 |
 | **COM 报 `<unknown>.Count` 或 `MK_E_UNAVAILABLE`（操作无法使用）** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 根因、处理 1 |
 | **想 `taskkill` 但怕丢未保存文档** | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 处理「杀进程前必须确认」 |
 | `accoreconsole` 带 `/s` 卡住 `exit=124`、提示「许可证无效」 | [`20261119-printwindow-com-wedge.md`](20261119-printwindow-com-wedge.md) | 预防 5 |

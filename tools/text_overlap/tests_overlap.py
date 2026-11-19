@@ -156,6 +156,42 @@ def test_nested_block() -> None:
     check("nested text measured", report["texts_measured"] == 1, str(report["texts_measured"]))
 
 
+def test_nested_block_names_the_outer_reference() -> None:
+    """A text two blocks deep must name the **top-level** reference as `via`.
+
+    `member.copy()` does not carry a handle - the copy never enters the
+    entitydb - so deriving `via` from the nested INSERT itself produced the
+    string `'None'`. That reported as "this text lives in block reference None;
+    move or edit it inside the block definition", which names nothing and is
+    unactionable. Caught by drawing9.py, which nests a block on purpose.
+    """
+    print("nested block reports the outer reference")
+    doc, msp = _new("")
+    inner = doc.blocks.new("INNER")
+    inner.add_mtext("NESTED", dxfattribs={"char_height": 200, "style": "CN", "insert": (0, 0)})
+    outer = doc.blocks.new("OUTER")
+    outer.add_blockref("INNER", (0, 0))
+    ref = msp.add_blockref("OUTER", (0, 0))
+    top_handle = ref.dxf.handle
+
+    from tools.text_overlap.overlap import _collect_texts
+
+    doc2 = ezdxf.readfile(_save(doc, "ov_nested_via.dxf"))
+    texts, _skipped, _own = _collect_texts(doc2.modelspace())
+    check("the nested text was measured", len(texts) == 1, str(len(texts)))
+    if texts:
+        check(
+            "via is the outer reference's handle",
+            texts[0].via == top_handle,
+            f"via={texts[0].via!r} expected {top_handle!r}",
+        )
+        check(
+            "the origin never says 'None'",
+            "None" not in texts[0].origin,
+            texts[0].origin,
+        )
+
+
 def test_non_uniform_block_is_reported() -> None:
     print("non-uniformly scaled block")
     doc, msp = _new("")
@@ -1042,16 +1078,26 @@ def test_dwg_conversion_never_touches_open_documents() -> None:
     class FakeDocs:
         Count = 0
 
+        def __init__(self) -> None:
+            self.opened: FakeDoc | None = None
+
         def Open(self, path: str, read_only: bool) -> FakeDoc:
             opened_paths.append(path)
-            return FakeDoc(path)
+            # `Documents.Open`'s return value is not trusted by the module (it can
+            # resolve to the method object), so model the real thing: the document
+            # is then found through ActiveDocument.
+            self.opened = FakeDoc(path)
+            return self.opened
 
     class FakeApp:
-        Documents = FakeDocs()
+        def __init__(self) -> None:
+            self.Documents = FakeDocs()
 
         @property
         def ActiveDocument(self) -> FakeDoc:
-            raise RuntimeError("no active document")
+            if self.Documents.opened is None:
+                raise RuntimeError("no active document")
+            return self.Documents.opened
 
     source = os.path.join(tempfile.gettempdir(), "ov_safety_src.dwg")
     with open(source, "wb") as fh:
@@ -1142,6 +1188,7 @@ def main() -> int:
         test_block_rotation_is_read,
         test_rotated_block_curve_hit,
         test_nested_block,
+        test_nested_block_names_the_outer_reference,
         test_attrib_is_read,
         test_attrib_via_block_rotation,
         test_table_cells_are_read,

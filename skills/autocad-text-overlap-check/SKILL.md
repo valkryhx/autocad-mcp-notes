@@ -126,7 +126,7 @@ Reported text also carries its **style name**, because that is what fixes a
 
 Re-run the check **on the saved file**. A fix measured in memory is not a fix.
 The checker's own suite is in [references/verification.md](references/verification.md);
-35 test functions / 106 assertions run without AutoCAD.
+36 test functions / 109 assertions run without AutoCAD.
 
 ## When the check says nothing
 

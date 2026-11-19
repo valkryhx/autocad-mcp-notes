@@ -343,6 +343,34 @@ if not _same_file(document.FullName, dwg_copy):
 runs without AutoCAD by substituting a fake app that records every `SaveAs`
 target.
 
+## 22. `member.copy()` drops the handle, so `via` became `'None'`
+
+`_expand()` descends into nested block references by copying the inner `INSERT`
+and transforming the copy. The copy is **not** added to the entitydb, so
+`copy().dxf.handle` is `None` — and `str(None)` is the string `'None'`, not an
+empty string. A text two blocks deep therefore reported:
+
+```
+9B in None [0] DN100
+text is inside block reference None
+this text lives in block reference None; move or edit it inside the block
+definition, not here.
+```
+
+Every sentence names `None`. There is no reference `None` to edit, so the one
+actionable line in the finding is unactionable. Nothing failed, no warning, and
+the drawing it was found on had been reported clean.
+
+**Do:** thread the **outermost** reference's handle down the recursion rather
+than re-deriving it at each level (`_via` in `_expand`). `test_nested_block_
+names_the_outer_reference` locks it: the nested text's `via` must equal the
+top-level reference's handle, and its `origin` must not contain `None`.
+
+This was found by `drawing9.py`, which nests a block on purpose. Both existing
+fixtures use one level of nesting, where the bug is invisible — the value is
+correct because the outer call supplies it. **A bug in recursion needs a
+recursion-shaped fixture.**
+
 ## Adding a check
 
 1. Return `Finding` objects with `kind`, `handle`, `layer`, `text`, `box`, and

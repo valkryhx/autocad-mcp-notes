@@ -418,9 +418,20 @@ def _table_block(table, blocked: list[str]):
     return None
 
 
-def _expand(insert, depth: int, blocked: list[str]):
+def _expand(insert, depth: int, blocked: list[str], _via: str | None = None):
     """Yield (entity, matrix, via_handle) for a block reference's contents,
-    following nested references to ``MAX_BLOCK_DEPTH``."""
+    following nested references to ``MAX_BLOCK_DEPTH``.
+
+    ``_via`` is the outermost reference's handle, threaded down the recursion.
+    It is ``None`` only on the first call; every yielded text carries it, so a
+    text three blocks deep still says which **top-level** reference to edit.
+
+    Do not derive it from a nested ``INSERT``'s own handle: ``copy()`` does not
+    carry a handle (the copy never enters the entitydb), so
+    ``str(insert.dxf.handle)`` there is the string ``'None'``, which reads in a
+    report as "inside block reference None". Measured on a two-level nesting.
+    """
+    via = _via if _via is not None else str(insert.dxf.handle)
     if depth > MAX_BLOCK_DEPTH:
         blocked.append(f"{insert.dxf.handle} (INSERT): nested deeper than {MAX_BLOCK_DEPTH}")
         return
@@ -437,13 +448,15 @@ def _expand(insert, depth: int, blocked: list[str]):
         if kind == "INSERT":
             nested = member.copy()
             nested.transform(matrix)
-            yield from _expand(nested, depth + 1, blocked)
+            # Keep the outermost reference's handle as `via`, not the nested
+            # one's: the copy has no handle at all (see the docstring).
+            yield from _expand(nested, depth + 1, blocked, _via=via)
         elif kind in TABLE_TYPES:
             nested_table = _table_block(member, blocked)
             if nested_table is not None:
-                yield from _expand_table(nested_table, matrix, str(insert.dxf.handle), depth + 1, blocked)
+                yield from _expand_table(nested_table, matrix, via, depth + 1, blocked)
         else:
-            yield member, matrix, str(insert.dxf.handle)
+            yield member, matrix, via
 
 
 def _expand_table(block, matrix, via: str, depth: int, blocked: list[str]):
@@ -465,7 +478,9 @@ def _expand_table(block, matrix, via: str, depth: int, blocked: list[str]):
         elif kind == "INSERT":
             nested = member.copy()
             nested.transform(matrix)
-            yield from _expand(nested, depth + 1, blocked)
+            # Same reason as in `_expand`: the copy has no handle, so the `via`
+            # must come from the container, not from this member.
+            yield from _expand(nested, depth + 1, blocked, _via=via)
         else:
             yield member, matrix, via
 

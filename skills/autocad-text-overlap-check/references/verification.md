@@ -40,7 +40,7 @@ cd D:/git_codes/test_Autocad_MCP
 D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe tools/text_overlap/tests_overlap.py
 ```
 
-**35 test functions / 106 assertions, none needing AutoCAD.** They cover the
+**36 test functions / 109 assertions, none needing AutoCAD.** They cover the
 error paths, every entity type read, blocks (rotated / nested / non-uniform),
 tables, dimensions, multileaders, and the regression tests for the bugs listed
 in [pitfalls.md](pitfalls.md).
@@ -125,6 +125,43 @@ does not actually clear its finding fails the run.
 after a round-trip through AutoCAD still yields exactly the same seven findings -
 which is the evidence that the checks read the format AutoCAD really writes, not
 just ezdxf's own output.
+
+### `drawing9.py` — every defect hidden inside a container
+
+Drawing8 puts its texts straight in model space. That leaves the harder half
+untested: a naive reader walks model space, sees nothing wrong, and reports a
+clean drawing. Every planted collision here lives inside something.
+
+| planted | hidden in |
+|---|---|
+| pump tags collide | the block's `TAG` **ATTRIB** |
+| `DN100` × `DN100` | text in a block **nested** inside another block |
+| nameplate vs label | text inside a **rotated** reference |
+| leader text vs label | a **MULTILEADER** |
+| partition through a sensor tag | an ATTRIB inside a block, crossed by a line |
+| table cell vs label | a measured **table cell** (placement is read back, not guessed) |
+| `Ø` in Standard / hidden note / duplicate / tiny dims | as in Drawing8 |
+
+Clean controls: well-spaced valves, the same `Ø` in the `CN` style, axis numbers
+in their bubbles, undisturbed table cells.
+
+The table is the reason this fixture needs AutoCAD: ezdxf 1.4.4 has no table API
+and raises `CopyNotSupported` for `ACAD_TABLE`, so it is authored through COM on
+a **copy** of the file (never the user's document — see
+[dwg-saveas-repoint](../../../docs/20261120-dwg-saveas-repoint.md)) and written
+back as DXF. Without AutoCAD the run prints `PARTIAL` and names the table path as
+**not exercised** rather than scoring it as clean.
+
+```bash
+python draw_test/overlap_proto/drawing9.py --inspect    # boxes only, no COM
+python draw_test/overlap_proto/drawing9.py              # full, needs AutoCAD
+```
+
+Expect `PASS: every container-hidden defect found, every clean control quiet`.
+
+**This fixture is what found the `via='None'` bug** (pitfall 22): it nests a
+block on purpose, which no other fixture did. Worth adding to whenever a new
+container type is supported.
 
 ### `crosscheck.py` — box against AutoCAD, character by character
 

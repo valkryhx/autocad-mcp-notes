@@ -30,7 +30,7 @@ tools/text_overlap/
 ├── overlap.py         the seven checks, block/table/dimension readers, fix search
 ├── README.md          short usage note for the tool on its own
 ├── dwg.py             DWG -> temp DXF via a running AutoCAD (safely)
-└── tests_overlap.py   35 functions / 106 assertions, no AutoCAD needed
+└── tests_overlap.py   36 functions / 109 assertions, no AutoCAD needed
 ```
 
 `textbox.py` and `overlap.py` are separate on purpose: the box is a measurement
@@ -45,8 +45,10 @@ draw_test/overlap_proto/
 ├── clean.py           27 well-spaced texts -> must report 0
 ├── planted.py         6 planted defects + a control group -> 6/6, 0 false
 ├── drawing8.py        a whole plan: 7 defects + 5 clean controls in one file
+├── drawing9.py        every defect hidden in a container (block/attrib/nested/rotated/mleader/table)
 ├── Drawing8.dxf       what drawing8.py builds (kept as the fixture)
 ├── Drawing8.dwg       the same drawing saved by AutoCAD 2026, round-trip tested
+├── Drawing9.dxf       what drawing9.py builds; the table is authored by AutoCAD via COM
 ├── crosscheck.py      11 COM-built texts vs GetBoundingBox
 ├── anchors.py         9 attachment points + 90° rotation, compares corners
 └── verify/
