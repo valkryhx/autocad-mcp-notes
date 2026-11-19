@@ -68,12 +68,15 @@ def _human(report: dict) -> str:
         label("text_duplicate", "duplicate"),
         label("text_illegible", "too small on paper"),
         label("text_glyphless", "with unplottable glyphs"),
+        label("opening_blocked", "blocking a door swing"),
+        label("solid_overlap", "solid-on-solid"),
     ) if part]
     # Every kind `detect()` knows about must appear here, or a finding count
     # silently disappears from the summary while still being in the list.
     listed = sum(counts[kind] for kind in (
         "text_text", "text_curve", "text_scale", "text_hidden",
         "text_duplicate", "text_illegible", "text_glyphless",
+        "opening_blocked", "solid_overlap",
     ))
     summary = ", ".join(parts) if parts else "all clean"
     lines.append(f"  {len(findings)} finding(s): {summary}")
@@ -96,6 +99,27 @@ def _human(report: dict) -> str:
         lines.append(f"  {index}. {finding['kind']}{spot}")
         style = finding.get("style")
         tag = f" [style {style}]" if style else ""
+        physical = finding["kind"] in ("opening_blocked", "solid_overlap")
+        if physical:
+            # These name two plan objects, not a text and whatever crosses it:
+            # there is no text on either side, so the text-shaped lines below
+            # would print an empty excerpt and the word "crosses".
+            handle = finding["handle"]
+            layer = finding["layer"]
+            in_block = finding.get("in_block")
+            what = (f"block reference {in_block}" if in_block
+                    else f"handle {handle}")
+            lines.append(f"     {what} [{layer}]")
+            other = finding.get("with")
+            if other:
+                relation = ("stands inside the swing of" if finding["kind"] == "opening_blocked"
+                            else "overlaps")
+                lines.append(
+                    f"     {relation} {other['handle']} [{other['layer']}] {other['type']}"
+                )
+            if finding.get("note"):
+                lines.append(f"     note: {finding['note']}")
+            continue
         lines.append(
             f"     {finding['handle']} [{finding['layer']}] "
             f"{_excerpt(finding['text'])}{tag}"

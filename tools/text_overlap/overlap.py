@@ -1749,6 +1749,15 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
     findings.extend(duplicates)
     findings.extend(_legibility_findings(space, texts))
     findings.extend(_style_glyph_findings(space, texts))
+
+    # Physical collisions. A text check cannot see a rack standing in a
+    # doorway; on the plan that motivated this (2026-11-19) the only symptom
+    # was a text_curve row on the rack's own label, which would have been
+    # "fixed" by moving the label and leaving the rack in the opening.
+    from .physical import physical_findings
+    skipped_physical: list[str] = []
+    findings.extend(physical_findings(space, skipped_physical))
+
     findings.sort(key=lambda f: (-(f.ratio or 0), f.kind))
 
     # How many text entities the space holds *directly*: a reader that
@@ -1782,8 +1791,10 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
             "text_duplicate",
             "text_illegible",
             "text_glyphless",
+            "opening_blocked",
+            "solid_overlap",
         )
         },
-        "not_checked": sorted(set(skipped_text + skipped_curves)),
+        "not_checked": sorted(set(skipped_text + skipped_curves + skipped_physical)),
         "skipped_types": sorted(SKIPPED_TYPES),
     }

@@ -53,6 +53,10 @@
 
 | 症状 | 文件 | 章节 |
 |---|---|---|
+| **文字检查说「标签被线穿过」，但真正错的是那个实体的位置** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 盲区一 / 根因一 / 处理一：新增 `opening_blocked` |
+| **机架/家具站在门的开启范围内（门打不开）** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 处理一：门只从 ARC 读，铰点=弧心、门扇=半径 |
+| **建筑图上跑全量 critique 冒出几十条 `pid_*`** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 盲区二 / 根因二 / 处理二：`has_pid_content` 收紧 |
+| **物理检查报一堆碰撞，其实只是相邻或相切** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 「三个必须知道的阈值细节」：相切、共边、块内 handle |
 | **所有工具报 `RPC_E_CALL_REJECTED`、`system_status` 说 `connected: false`，但 AutoCAD 窗口看着正常** | [`20261119-acad-not-quiescent-doc-calls-rejected.md`](20261119-acad-not-quiescent-doc-calls-rejected.md) | 现象 / 根因：`GetAcadState().IsQuiescent = False` 是决定性判据 |
 | **怎么区分「MCP 死代理」和「AutoCAD 有未结束命令」** | [`20261119-acad-not-quiescent-doc-calls-rejected.md`](20261119-acad-not-quiescent-doc-calls-rejected.md) | 预防 1：看 `proxy_dropped`。有→P0；无→查 `IsQuiescent` |
 | **应用级 COM 能通、文档级全被拒，是什么问题** | [`20261119-acad-not-quiescent-doc-calls-rejected.md`](20261119-acad-not-quiescent-doc-calls-rejected.md) | 根因「决定性证据」对照表：这个组合就是有命令停在提示符上 |

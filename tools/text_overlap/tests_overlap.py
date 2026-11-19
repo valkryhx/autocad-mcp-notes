@@ -10,6 +10,7 @@ live in ``crosscheck.py`` and ``anchors.py``.
 
 from __future__ import annotations
 
+import math
 import os
 import sys
 import tempfile
@@ -18,6 +19,7 @@ import ezdxf
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 from tools.text_overlap import detect  # noqa: E402
+from tools.text_overlap.physical import door_swings  # noqa: E402
 
 FAILURES: list[str] = []
 
@@ -1256,6 +1258,164 @@ def test_text_anchor_follows_alignment_codes() -> None:
     )
 
 
+# ── physical collisions: doors and footprints ───────────────────────────────
+#
+# A text check cannot see a rack standing in a doorway. Measured on a real
+# 4-room plan (2026-11-19): the first layout put a rack row at x=11300 while
+# the wall door's leaf swept x=11300..12500. The only symptom the text checker
+# produced was a `text_curve` on that rack's own label - "fix" the label and the
+# rack stays in the door. These tests pin the two physical checks.
+
+_RACK_W, _RACK_D = 600.0, 1200.0
+_DOOR_LAYER = "A-DOOR-E-N"
+_FURN_LAYER = "A-FURN-E-N"
+
+
+def _physical_doc():
+    doc = ezdxf.new("R2013")
+    doc.layers.add(_DOOR_LAYER, color=3)
+    doc.layers.add(_FURN_LAYER, color=5)
+    return doc, doc.modelspace()
+
+
+def _rack(msp, x, y, layer=_FURN_LAYER, tag=None):
+    pts = [(x, y), (x + _RACK_W, y), (x + _RACK_W, y + _RACK_D), (x, y + _RACK_D)]
+    pl = msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
+    if tag:
+        msp.add_text(tag, height=125, dxfattribs={"layer": layer}).set_placement(
+            (x + _RACK_W / 2, y + _RACK_D / 2)
+        )
+    return pl
+
+
+def _door(msp, hinge, radius, start_deg, end_deg):
+    """Leaf LINE plus swing ARC, the shape ``arch_opening`` draws."""
+    hx, hy = hinge
+    msp.add_line(
+        (hx, hy),
+        (hx + radius * math.cos(math.radians(start_deg)),
+         hy + radius * math.sin(math.radians(start_deg))),
+        dxfattribs={"layer": _DOOR_LAYER},
+    )
+    msp.add_arc(
+        center=(hx, hy), radius=radius,
+        start_angle=start_deg, end_angle=end_deg,
+        dxfattribs={"layer": _DOOR_LAYER},
+    )
+
+
+def test_opening_blocked_is_reported() -> None:
+    """A rack inside the swept quarter disc, and the exact rack named.
+
+    The geometry is copied from the real door: wall at x=12500, hinge at the
+    TOP of the opening (y=2000), leaf open pointing west (180 deg), arc closing
+    south along the wall to 270 deg. That quarter is x 11300..12500 by
+    y 800..2000. Sweeping 90..180 instead covers the EMPTY upper quadrant and
+    the check looks broken - which is exactly what happened while writing it.
+    """
+    print("\nPHYSICAL: a rack standing in a door's swing")
+    doc, msp = _physical_doc()
+    _door(msp, (12500.0, 2000.0), 1200.0, 180.0, 270.0)
+    _rack(msp, 10700.0, 400.0, tag="R-OK01")
+    _rack(msp, 11300.0, 400.0, tag="R-BAD")
+    report = detect(_save(doc, "ov_physical_blocked.dxf"))
+
+    kinds = [f for f in report["findings"] if f["kind"] == "opening_blocked"]
+    check("one opening_blocked finding", len(kinds) == 1,
+          f"got {len(kinds)}: {report['by_kind']}")
+    if kinds:
+        row = kinds[0]
+        check("it names the rack inside the swing, not the clear one",
+              row["box"][0] == 11300.0, str(row["box"]))
+        check("it names the door", row.get("with", {}).get("handle") is not None,
+              str(row.get("with")))
+        check("it says where to move it",
+              "swept quarter disc" in row.get("note", ""), row.get("note", ""))
+    check("the clear rack is not named",
+          all(f["box"][0] != 10700.0 for f in kinds),
+          str([f["box"] for f in kinds]))
+
+
+def test_abutting_the_swing_is_not_blocked() -> None:
+    """A footprint that merely touches the arc is clear, and must not be named.
+
+    Measured on the real plan: rack R4-B05 ends at x=11300 and the door's swing
+    begins at x=11300, so its corner sits exactly on the arc at distance ==
+    radius. Reporting it would send the drafter to move a rack that is already
+    clear. Same "touching is not colliding" rule the box overlap uses.
+    """
+    print("\nPHYSICAL: a rack abutting the swing is not in the doorway")
+    doc, msp = _physical_doc()
+    _door(msp, (12500.0, 2000.0), 1200.0, 180.0, 270.0)
+    _rack(msp, 10700.0, 400.0, tag="R-EDGE")
+    report = detect(_save(doc, "ov_physical_abut.dxf"))
+    kinds = [f for f in report["findings"] if f["kind"] == "opening_blocked"]
+    check("abutting the arc is not a blockage", not kinds, str(report["by_kind"]))
+
+
+def test_door_is_read_from_its_arc() -> None:
+    """Hinge, leaf length and sweep come from the ARC alone."""
+    print("\nPHYSICAL: the door is read from its swing arc")
+    doc, msp = _physical_doc()
+    _door(msp, (5000.0, 3000.0), 900.0, 0.0, 90.0)
+    path = _save(doc, "ov_physical_door.dxf")
+    swings = door_swings(ezdxf.readfile(path).modelspace(), [])
+    check("one swing found", len(swings) == 1, f"got {len(swings)}")
+    if swings:
+        s = swings[0]
+        check("hinge is the arc centre", s.hinge == (5000.0, 3000.0), str(s.hinge))
+        check("leaf length is the arc radius", s.radius == 900.0, str(s.radius))
+        check("sweep is the arc's angles",
+              (s.start_deg, s.end_deg) == (0.0, 90.0),
+              f"{s.start_deg},{s.end_deg}")
+
+    doc2, msp2 = _physical_doc()
+    msp2.add_arc(center=(0, 0), radius=800, start_angle=0, end_angle=90,
+                 dxfattribs={"layer": _FURN_LAYER})
+    other = door_swings(
+        ezdxf.readfile(_save(doc2, "ov_physical_nodoor.dxf")).modelspace(), [])
+    check("an arc on a non-door layer is not a door", not other, str(other))
+
+
+def test_solid_overlap_is_reported() -> None:
+    print("\nPHYSICAL: two footprints in the same place")
+    doc, msp = _physical_doc()
+    _rack(msp, 1000.0, 1000.0, tag="R-A")
+    _rack(msp, 1100.0, 1050.0, tag="R-B")
+    report = detect(_save(doc, "ov_physical_clash.dxf"))
+    rows = [f for f in report["findings"] if f["kind"] == "solid_overlap"]
+    check("one solid_overlap finding", len(rows) == 1,
+          f"got {len(rows)}: {report['by_kind']}")
+    if rows:
+        check("it reports the shared fraction",
+              (rows[0].get("overlap_ratio") or 0) > 0.5,
+              str(rows[0].get("overlap_ratio")))
+
+
+def test_adjacent_racks_are_not_a_clash() -> None:
+    """A row of racks shares every internal edge. That is a layout, not a clash.
+
+    The first version reported 47 clashes for 48 adjacent racks: a shared edge
+    satisfied a naive test. This is the regression that pins the tolerance.
+    """
+    print("\nPHYSICAL: adjacent racks are not overlapping")
+    doc, msp = _physical_doc()
+    for k in range(6):
+        _rack(msp, 7050.0 + k * _RACK_W, 400.0, tag=f"R-{k + 1:02d}")
+    report = detect(_save(doc, "ov_physical_adjacent.dxf"))
+    check("a 6-rack row is clean", not report["findings"], str(report["by_kind"]))
+
+
+def test_physical_checks_are_opt_out_like_the_rest() -> None:
+    """The new kinds appear in by_kind even when zero, so a report is readable."""
+    print("\nPHYSICAL: the new kinds are counted")
+    doc, _ = _new("")
+    report = detect(_save(doc, "ov_physical_kinds.dxf"))
+    check("opening_blocked counted",
+          report["by_kind"].get("opening_blocked") == 0, str(report["by_kind"]))
+    check("solid_overlap counted",
+          report["by_kind"].get("solid_overlap") == 0, str(report["by_kind"]))
+
 def main() -> int:
     for test in (
         test_empty_drawing,
@@ -1295,6 +1455,12 @@ def main() -> int:
         test_dwg_conversion_never_touches_open_documents,
         test_dwg_without_autocad_explains_the_way_out,
         test_text_anchor_follows_alignment_codes,
+        test_opening_blocked_is_reported,
+        test_abutting_the_swing_is_not_blocked,
+        test_door_is_read_from_its_arc,
+        test_solid_overlap_is_reported,
+        test_adjacent_racks_are_not_a_clash,
+        test_physical_checks_are_opt_out_like_the_rest,
     ):
         test()
     print()

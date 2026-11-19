@@ -6,8 +6,10 @@ description: Use for any AutoCAD drawing whose text may collide with other text 
 # AutoCAD text overlap check
 
 A label that overlaps other content is a defect a reader sees immediately and a
-CAD check usually misses. This skill ships a measured text box and **seven**
-checks built on it.
+CAD check usually misses. This skill ships a measured text box and **nine**
+checks built on it: seven about text, and two about physical collisions (a solid
+standing in a door's swing, two solids in one footprint) — an overlap no text
+measurement can see.
 
 ## Run it
 
@@ -46,7 +48,10 @@ A real report on a real drawing is in `assets/sample-report.txt` (human form) an
 `assets/findings.json` (`--json`), both produced from
 `draw_test/gpu_dc_100.dxf`.
 
-## The seven checks
+## The nine checks
+
+Seven about text, two about **physical collisions** — things that overlap each
+other on a plan, which no text measurement can see.
 
 | kind | meaning | needs |
 |---|---|---|
@@ -57,11 +62,36 @@ A real report on a real drawing is in `assets/sample-report.txt` (human form) an
 | `text_duplicate` | the same text twice in the same place | — |
 | `text_illegible` | model text that prints below ISO 3098's 2.5 mm | a paper viewport |
 | `text_glyphless` | text using an SHX style with no glyphs for its own characters | — |
+| `opening_blocked` | a solid footprint standing inside a door's swept quarter disc | an `ARC` on a `DOOR`/`KAPI` layer |
+| `solid_overlap` | two solid footprints intersecting by ≥15% of the smaller one | closed polylines/circles |
 
-The last one is the quietest defect of the lot: `Standard` is `txt.shx`, which
-has no CJK and no `²`/`Ø`/`±`. AutoCAD stores the string, returns it unchanged
-from `entity_list`, draws nothing, and warns nobody. The area label `54.48 m²`
-plots as `54.48 m`.
+The last one of the text checks is the quietest defect of the lot: `Standard` is
+`txt.shx`, which has no CJK and no `²`/`Ø`/`±`. AutoCAD stores the string,
+returns it unchanged from `entity_list`, draws nothing, and warns nobody. The
+area label `54.48 m²` plots as `54.48 m`.
+
+## Why physical checks exist
+
+A text check cannot answer "does this rack stand in the doorway". Measured on a
+real 4-room plan (2026-11-19): the first layout put a rack row at x=11300 while
+the wall door's leaf swept x=11300..12500. The text checker **did** fire — as
+`text_curve` on that rack's own label, because the swing arc crossed the label.
+Read naively, that says "move the label", and the rack stays in the door.
+
+`opening_blocked` reports the same geometry as what it is: the object's
+position. It names the **block reference** to move (every rack of one definition
+shares the member handle `110`, so the member handle identifies nothing) and the
+quarter disc to clear.
+
+Three behaviours worth knowing, each pinned by a test:
+
+- **Abutting is not blocking.** A rack ending exactly on the arc (distance ==
+  radius) is clear. Reporting it sends the drafter to move the wrong rack.
+- **Adjacent is not overlapping.** A row of racks shares every internal edge.
+  A naive `>=` test called 47 of them clashes.
+- **The door is read from its ARC**, not guessed from a block name: hinge =
+  centre, leaf = radius, sweep = the arc's angles. A door on any other layer is
+  not guessed at.
 
 Thresholds are explained in `references/pitfalls.md` under "Why these numbers".
 
