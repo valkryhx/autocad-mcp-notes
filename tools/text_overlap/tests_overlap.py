@@ -1178,6 +1178,84 @@ def test_dwg_without_autocad_explains_the_way_out() -> None:
         os.remove(source)
 
 
+def _text_box_at(
+    halign: int, valign: int, insert: tuple[float, float],
+    align_point: tuple[float, float] | None, text: str = "MMMM",
+    height: float = 100.0,
+) -> tuple[float, float, float, float]:
+    """Measure one TEXT written with explicit raw alignment codes."""
+    from tools.text_overlap.textbox import measure_text
+
+    doc = ezdxf.new("R2010")
+    doc.styles.add("CN", font="simhei.ttf")
+    attributes = {
+        "style": "CN", "height": height, "insert": insert,
+        "halign": halign, "valign": valign,
+    }
+    if align_point is not None:
+        attributes["align_point"] = align_point
+    entity = doc.modelspace().add_text(text, dxfattribs=attributes)
+    return measure_text(entity)
+
+
+def test_text_anchor_follows_alignment_codes() -> None:
+    """Group 10 vs group 11: which one the box hangs from.
+
+    The two branches were swapped, so a text with ``valign=2`` was measured at
+    its insert point instead of its alignment point. AutoCAD rewrites that
+    insert point when it saves a DWG (it moved 70 units = half a character
+    height on a real drawing), so the same file measured clean as DXF and
+    collided as DWG. A probe with the two points deliberately apart pins the
+    direction of the fix: get it backwards again and these assertions fail.
+    """
+    print("\nTEXT anchor: group 10 vs group 11")
+    insert = (1000.0, 1000.0)
+    align_point = (3000.0, 1500.0)
+
+    # Both codes zero: the box hangs from group 10, near x=1000.
+    box = _text_box_at(0, 0, insert, align_point)
+    check(
+        "halign=0 valign=0 uses the insert point (group 10)",
+        abs(box[0] - insert[0]) < 60 and box[2] < 2000,
+        f"box={tuple(round(v) for v in box)}",
+    )
+
+    # Either code non-zero: the box hangs from group 11, near x=3000.
+    for halign, valign, label in (
+        (0, 2, "halign=0 valign=2"),
+        (1, 2, "halign=1 valign=2"),
+        (2, 2, "halign=2 valign=2"),
+        (1, 0, "halign=1 valign=0"),
+    ):
+        box = _text_box_at(halign, valign, insert, align_point)
+        centre = (box[0] + box[2]) / 2
+        check(
+            f"{label} uses the alignment point (group 11)",
+            centre > 2000,
+            f"box={tuple(round(v) for v in box)} centre={centre:.0f}",
+        )
+
+    # The vertical anchor too: valign=2 means the box is centred on the point,
+    # valign=3 means it sits above it. Measured in the drawing where group 11
+    # y=1500 and group 10 y=1000, so a 500 gap tells the branches apart.
+    box = _text_box_at(1, 2, insert, align_point)
+    box_centre_y = (box[1] + box[3]) / 2
+    check(
+        "valign=2 centres the box on the alignment point",
+        abs(box_centre_y - align_point[1]) < 30,
+        f"centre_y={box_centre_y:.0f} expected={align_point[1]:.0f}",
+    )
+
+    # A file that carries the codes without group 11 must not lose the text.
+    # halign=1 centres the box on its anchor, so the anchor sits mid-box.
+    box = _text_box_at(1, 2, insert, None)
+    check(
+        "missing group 11 falls back to the insert point",
+        box is not None and abs((box[0] + box[2]) / 2 - insert[0]) < 30,
+        f"box={tuple(round(v) for v in box) if box else None}",
+    )
+
+
 def main() -> int:
     for test in (
         test_empty_drawing,
@@ -1216,6 +1294,7 @@ def main() -> int:
         test_errors,
         test_dwg_conversion_never_touches_open_documents,
         test_dwg_without_autocad_explains_the_way_out,
+        test_text_anchor_follows_alignment_codes,
     ):
         test()
     print()

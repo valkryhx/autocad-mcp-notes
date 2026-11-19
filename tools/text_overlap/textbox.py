@@ -308,21 +308,32 @@ def _measure_text(entity, calibration: Calibration) -> Box | None:
         return None
 
     # TEXT alignment: group 72 gives the horizontal anchor, and 73 the
-    # vertical one; both move the insertion point off the left baseline.
+    # vertical one. Which point the text hangs from depends on whether either
+    # is non-zero - and the two branches were the other way round:
+    #
+    #   * group 72 = 0 AND 73 = 0: the box is anchored at group 10 (``insert``),
+    #     the left baseline point. Group 11 is not used.
+    #   * either non-zero: the anchor is group 11 (``align_point``), and group
+    #     10 is ignored by AutoCAD.
+    #
+    # Reading group 10 in the non-zero branch measured the same drawing
+    # differently from AutoCAD: a text written with valign=2 (=Middle) had its
+    # insert point rewritten to 70 units below the alignment point when the
+    # DWG was saved, so the box came out half a character height low and a wall
+    # 27 units away reported a collision that a reader cannot see. The same
+    # file gave 0 findings as DXF and 1 as DWG.
     halign = int(_attr(entity, "halign", 0) or 0)
     valign = int(_attr(entity, "valign", 0) or 0)
     if halign == 0 and valign == 0:
-        alignment_point = entity.dxf.get("align_point", None)
+        origin = Vec3(entity.dxf.insert)
         left = 0.0
         baseline = 0.0
-        if alignment_point is not None:
-            # A non-default alignment stores its point in group 11; the box is
-            # placed there rather than at the insert.
-            origin = Vec3(alignment_point)
-        else:
-            origin = Vec3(entity.dxf.insert)
     else:
-        origin = Vec3(entity.dxf.insert)
+        alignment_point = entity.dxf.get("align_point", None)
+        # A file may carry the alignment codes without group 11; falling back to
+        # the insert point beats dropping the text.
+        origin = (Vec3(alignment_point) if alignment_point is not None
+                  else Vec3(entity.dxf.insert))
         left = {0: 0.0, 1: -width / 2.0, 2: -width, 3: 0.0, 4: -width / 2.0, 5: 0.0}.get(
             halign, 0.0
         )
