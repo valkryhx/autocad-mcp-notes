@@ -16,6 +16,7 @@ import sys
 import tempfile
 
 import ezdxf
+from ezdxf.enums import TextEntityAlignment
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")))
 from tools.text_overlap import detect  # noqa: E402
@@ -1283,7 +1284,7 @@ def _rack(msp, x, y, layer=_FURN_LAYER, tag=None):
     pl = msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
     if tag:
         msp.add_text(tag, height=125, dxfattribs={"layer": layer}).set_placement(
-            (x + _RACK_W / 2, y + _RACK_D / 2)
+            (x + _RACK_W / 2, y + _RACK_D / 2), align=TextEntityAlignment.MIDDLE_CENTER
         )
     return pl
 

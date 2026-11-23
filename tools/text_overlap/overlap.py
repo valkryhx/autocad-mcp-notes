@@ -1710,7 +1710,9 @@ def _attach_fixes(
             finding.fix["moves_alone"] = True
 
 
-def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) -> dict:
+def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True,
+           min_corridor_width_mm: float | None = None, corridor_ids=(), require_circulation=False,
+           rack_loop: str | None = None, min_rack_loop_mm: float | None = None) -> dict:
     """Run both checks on one DXF and return a report dict.
 
     Raises ``FileNotFoundError`` for a missing file and ``ValueError`` for a
@@ -1758,6 +1760,17 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
     skipped_physical: list[str] = []
     findings.extend(physical_findings(space, skipped_physical))
 
+    from .circulation import KINDS, circulation
+    access_findings, access, skipped_access = circulation(space, min_corridor_width_mm, corridor_ids, require_circulation)
+    findings.extend(access_findings)
+    loop = None
+    if rack_loop is not None or min_rack_loop_mm is not None:
+        from .rack_loop import KIND, rack_loop_check
+        extra, loop = rack_loop_check(space, rack_loop, min_rack_loop_mm, expand_blocks)
+        findings.extend(extra)
+        KINDS = (*KINDS, KIND)
+        if loop['status'] == 'not_checked':
+            skipped_access.append('rack_loop: ' + loop['reason'])
     findings.sort(key=lambda f: (-(f.ratio or 0), f.kind))
 
     # How many text entities the space holds *directly*: a reader that
@@ -1781,6 +1794,8 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
         "containers": containers,
         "curves": sum(1 for e in space if e.dxftype() in CURVE_TYPES),
         "findings": [f.as_dict() for f in findings],
+        "circulation": access,
+        **({"rack_loop": loop} if loop is not None else {}),
         "by_kind": {
             kind: sum(1 for f in findings if f.kind == kind)
             for kind in (
@@ -1793,8 +1808,9 @@ def detect(path: str, *, layout: str | None = None, expand_blocks: bool = True) 
             "text_glyphless",
             "opening_blocked",
             "solid_overlap",
+            *KINDS,
         )
         },
-        "not_checked": sorted(set(skipped_text + skipped_curves + skipped_physical)),
+        "not_checked": sorted(set(skipped_text + skipped_curves + skipped_physical + skipped_access)),
         "skipped_types": sorted(SKIPPED_TYPES),
     }

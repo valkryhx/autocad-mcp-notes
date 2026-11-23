@@ -1,15 +1,13 @@
 ---
 name: autocad-text-overlap-check
-description: Use for any AutoCAD drawing whose text may collide with other text or with geometry, or that may have text which will not print properly - overlapping labels, a note crossed by a wall or axis, table text running into rules, dimension text too small to read, labels on a switched-off layer, a duplicated tag, or text that prints below the ISO 3098 minimum. Reads text wherever it hides (blocks, attributes, tables, dimensions, multileaders) and reports each finding with handle, layer, text, exact location, and a fix verified not to create a second collision.
+description: Use when AutoCAD text overlaps, disappears or plots too small, equipment blocks a doorway, or a floor plan needs room access, door swing direction, door-to-door conflicts, corridor clearance, or a continuous maintenance aisle around a row of cabinets checked.
 ---
 
 # AutoCAD text overlap check
 
-A label that overlaps other content is a defect a reader sees immediately and a
-CAD check usually misses. This skill ships a measured text box and **nine**
-checks built on it: seven about text, and two about physical collisions (a solid
-standing in a door's swing, two solids in one footprint) — an overlap no text
-measurement can see.
+建筑平面验收时，在现有检查命令后加 `--circulation`。逐项报告房间能否从室外进入、门扇开启侧、两门扫掠冲突和门口局部余宽。先读[房间、门和走廊的判读方法](references/circulation.md)。
+
+**机柜排四周的检修通道是可选项，默认关闭。** 用户指定排号和净宽时，在同一命令后加 `--rack-loop C01 --min-rack-loop-mm 1500`，按项目要求替换这两个值。按 `CAB_ID` 选择整排，测柜前、柜后、两端及四个方角。看 JSON 的 `rack_loop.status` 和 `clear_mm`。`fail` 时用 `limiting_handles` 找瓶颈，`not_checked` 时按 `reason` 复核，缺少净宽就保留待定。1500 mm 是示例项目值。完整口径见[机柜环道](references/rack-loop.md)。
 
 ## Run it
 
@@ -20,11 +18,10 @@ D:/git_codes/Autocad-MCP/.venv/Scripts/python.exe -m tools.text_overlap FILE.dwg
 ```
 
 Options: `--json`, `--layout NAME`, `--quiet`, `--no-blocks`, `--no-com`.
-Exit code: `0` nothing found, `1` findings, `2` unreadable input.
+Exit code: `0` no findings in checked scope, `1` findings, `2` unreadable input or incomplete explicitly requested circulation or rack-loop audit.
 
 **A `.dwg` works too**, if AutoCAD is running: the tool converts a *copy* of it
-through COM and checks the result. No ODA here, and `accoreconsole` is not
-licensed, so a live AutoCAD is the only route. The copy is deliberate — `SaveAs`
+through COM and checks the result. The CLI uses the running AutoCAD COM backend for this conversion. The copy is deliberate — `SaveAs`
 re-points the *document*, so running it on a drawing the user has open would turn
 their DWG into a temp DXF and delete it. See
 [tools/text_overlap/README.md](../../tools/text_overlap/README.md) for the five
@@ -48,7 +45,7 @@ A real report on a real drawing is in `assets/sample-report.txt` (human form) an
 `assets/findings.json` (`--json`), both produced from
 `draw_test/gpu_dc_100.dxf`.
 
-## The nine checks
+## Text and footprint checks
 
 Seven about text, two about **physical collisions** — things that overlap each
 other on a plan, which no text measurement can see.

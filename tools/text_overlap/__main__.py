@@ -73,12 +73,22 @@ def _human(report: dict) -> str:
     ) if part]
     # Every kind `detect()` knows about must appear here, or a finding count
     # silently disappears from the summary while still being in the list.
+    from .circulation import KINDS
+    if 'rack_loop' in report:
+        from .rack_loop import KIND
+        KINDS = (*KINDS, KIND)
+        loop = report['rack_loop']
+        evidence = (f"可留 {loop['clear_mm']:g} mm，要求 {loop['required_mm']:g} mm" if 'clear_mm' in loop else loop['reason'])
+        lines.append(f"  机柜排 {loop['row']} 环道 {loop['status']}，{evidence}")
+    for kind in KINDS:
+        if counts.get(kind):
+            parts.append(f"{counts[kind]} {kind}")
     listed = sum(counts[kind] for kind in (
         "text_text", "text_curve", "text_scale", "text_hidden",
         "text_duplicate", "text_illegible", "text_glyphless",
-        "opening_blocked", "solid_overlap",
+        "opening_blocked", "solid_overlap", *KINDS,
     ))
-    summary = ", ".join(parts) if parts else "all clean"
+    summary = ", ".join(parts) if parts else ("no findings in checked scope" if report["not_checked"] else "all clean")
     lines.append(f"  {len(findings)} finding(s): {summary}")
     if listed != len(findings):
         # A new kind was added to `detect()` and not to the summary above.
@@ -89,6 +99,17 @@ def _human(report: dict) -> str:
             lines.append(f"     - {reason}")
         if len(report["not_checked"]) > 10:
             lines.append(f"     ... and {len(report['not_checked']) - 10} more")
+    access = report['circulation']
+    if access['status'] == 'not_checked':
+        lines.append(f"  circulation: not_checked ({access['reason']})")
+    if access['status'] in ('checked', 'partial'):
+        lines.append(f"  可达空间 {access['reachable']}/{access['rooms']}，已核对 {len(access['doors'])} 樘平开门（几何连通）。")
+        for door in access['doors']:
+            side = door['opens_into']
+            if 'corridor_id' in door:
+                width = door.get('remaining_mm')
+                section = f"单扇全开后局部余宽 {width:g} mm" if width is not None else door.get('section_status', '')
+                lines.append(f"    {door['id']} [{door['handle']}] 开向 {side}，{section}")
     if not findings:
         return "\n".join(lines)
 
@@ -100,6 +121,11 @@ def _human(report: dict) -> str:
         style = finding.get("style")
         tag = f" [style {style}]" if style else ""
         physical = finding["kind"] in ("opening_blocked", "solid_overlap")
+        if finding['kind'] in KINDS:
+            lines.append(f"     {finding['handle']} [{finding['layer']}] {finding.get('text', '')} {finding['note']}")
+            if finding.get('with'):
+                lines.append(f"     关联门弧 {finding['with']['handle']}")
+            continue
         if physical:
             # These name two plan objects, not a text and whatever crosses it:
             # there is no text on either side, so the text-shaped lines below
@@ -207,6 +233,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="refuse to touch a running AutoCAD; a DWG is then an error",
     )
+    parser.add_argument('--circulation', action='store_true', help='要求检查建筑通行，无法检查时返回 2')
+    parser.add_argument('--min-corridor-width-mm', type=float, help='项目规定的门口剩余走廊净宽（mm）')
+    parser.add_argument('--corridor-id', action='append', default=[], help='指定走廊房间 ID，可重复')
+    parser.add_argument('--rack-loop', metavar='ROW', help='可选，按 CAB_ID 前缀选择机柜排')
+    parser.add_argument('--min-rack-loop-mm', type=float, metavar='WIDTH', help='该排四周连续环带所需净宽（毫米）')
     args = parser.parse_args(argv)
 
     temp_dxf = None
@@ -238,7 +269,10 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             source = temp_dxf
 
-        report = detect(source, layout=args.layout, expand_blocks=not args.no_blocks)
+        report = detect(source, layout=args.layout, expand_blocks=not args.no_blocks,
+                        min_corridor_width_mm=args.min_corridor_width_mm, corridor_ids=args.corridor_id,
+                        require_circulation=args.circulation, rack_loop=args.rack_loop,
+                        min_rack_loop_mm=args.min_rack_loop_mm)
         if how:
             report["source"] = how
             report["path"] = args.path
@@ -263,6 +297,10 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     elif not args.quiet:
         print(_human(report))
+    if report.get('rack_loop', {}).get('status') == 'not_checked':
+        return 2
+    if report["circulation"]["status"] in ("partial", "not_checked") and (args.circulation or args.min_corridor_width_mm is not None or args.corridor_id):
+        return 2
     return 0 if not report["findings"] else 1
 
 

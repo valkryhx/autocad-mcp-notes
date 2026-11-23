@@ -14,7 +14,11 @@ python -m tools.text_overlap FILE.dxf --quiet    # 只看退出码
 python -m tools.text_overlap FILE.dwg --no-com   # 不许碰 AutoCAD
 ```
 
-退出码：`0` 无交叠，`1` 有交叠，`2` 文件读不了。
+## 可选的整排机柜检修通道
+
+在项目根目录运行 `python -m tools.text_overlap draw_test/Drawing2.dxf --rack-loop C01 --min-rack-loop-mm 1500 --json`。排号匹配 `CAB_ID` 最后一段数字之前的完整前缀，净宽须为项目给定的有限正数。省略两项即关闭。看 `rack_loop.status`、`clear_mm`、`limiting_handles` 和 `limiting_walls`。测量范围与复测方法见[技能说明](../../skills/autocad-text-overlap-check/references/rack-loop.md)。
+
+退出码 `0` 表示已查范围无发现，`1` 表示全图有发现，`2` 表示输入错误、文件读取失败或明确要求的检查未能完成。
 
 ## DWG 怎么读
 
@@ -201,3 +205,7 @@ fix: cad_batch of 2 entity_move step(s), each dx=1145.09, dy=0.0
 
 完整根因（共 8 条）与证据见
 [`docs/20261118-text-overlap-check.md`](../../docs/20261118-text-overlap-check.md)。
+
+## 房间、门与走廊
+
+建筑检查运行 `python -m tools.text_overlap FILE.dxf --circulation`。支持范围、四类发现、门向、净宽参数与退出码见[技能指南](../../skills/autocad-text-overlap-check/references/circulation.md)。

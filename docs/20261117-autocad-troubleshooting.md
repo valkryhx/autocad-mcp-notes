@@ -47,6 +47,8 @@
 | 2026-11-19 | [`20261119-dxf-save-fails-after-reopen.md`](20261119-dxf-save-fails-after-reopen.md) | **DXF 保存必失败**（`0x80210063`，facility 33 = AutoCAD 自身错误设施），DWG 正常。任意已存在的 DXF 都失败。物理原因：`SaveAs` 改指向后**原文件句柄不释放**，AutoCAD 要覆盖写自己还锁着的文件。**`Close(True)` 不是绕法**——不报错但静默丢改动（1078 进 1078 出）。**修法（`b874e25`）**：`drawing_save()` 自动降级为「SaveAs 临时 → 关闭 → 复制回目标 → 重开重绑」，9 个回归测试。**补充：人工 Ctrl+S 不走 MCP，同一缺陷照样失败**（同刻 DWG 副本成功）；`Documents.Open(p, True)` 的 `True` 是 `ReadOnly`，其保存失败与本问题**完全同码** | ✅ MCP 侧已补偿 |
 | 2026-11-19 | [`20261119-acad-not-quiescent-doc-calls-rejected.md`](20261119-acad-not-quiescent-doc-calls-rejected.md) | **AutoCAD 卡在未结束命令上：应用级 COM 能通、文档级全拒**。所有工具报 `RPC_E_CALL_REJECTED`、`system_status` 报 `connected: false`，但窗口看起来完全健康。**决定性判据 `GetAcadState().IsQuiescent = False`**——它挂在 Application 上，不受文档级过滤影响，是全线拒绝时唯一还答话的接口。逐项排除：无 `#32770`、`IsHungAppWindow=False`、`GetGUIThreadInfo.flags=0`、CPU 仅 9.4%、线程全 `Wait/UserRequest`、MTA 同样被拒。**"忙"分两种**：CPU 高才是真在算；CPU 低+线程等输入是等一个永远不来的输入，等 60 s 和重启都无效。**解法：ESC 必须 `PostMessage` 到框架全部后代窗口**（实测 36 个，含 DXGI 视口），只发主框架 3 轮全无效；广播一轮即恢复 | ✅ 已解决 |
 | 2026-11-19 | [`20261119-openblas-memory-and-render-glyph-blindspots.md`](20261119-openblas-memory-and-render-glyph-blindspots.md) | **内存压力被误判成版本缺陷，修错方向又破坏了 venv**。`import numpy` 报 `OpenBLAS ... Memory allocation still failed`；我提议 pip 升级，实测 numpy 2.4.6 / matplotlib 3.11.2 **本就是 PyPI 最新版**，真因是 15.3 GB 内存里 AutoCAD 私用 1365 MB、可用仅剩 0.7 GB（用户当场指出）。那次升级**先删后装**，`bezierTools.pyd` 被运行中的 MCP 进程锁住，pip 删掉 67 个源码文件后失败，留下坏包致 `No module named 'fontTools.agl'`；修法是临时 venv 装干净副本、**只补缺失文件**，复核 336 个子模块只剩 6 个可选依赖缺失。另新增两个不依赖窗口的渲染脚本，并测出**渲染器字形盲区**：`txt` 样式下 `m²` 在 AutoCAD 不显示而 matplotlib 照样画出（两版仅差 0.009% 像素） | ✅ 已解决 |
+| 2026-11-23 | [控制台转换及机柜回读](20261123-coreconsole-dwg-roundtrip.md) | 控制台打印帮助却不执行脚本。 | 已验证替代调用 |
+| 2026-11-23 | [房间通行与机柜检修环道](20261123-room-access-and-rack-loop.md) | 门洞连通、门扇互挡和靠墙柜排四角净宽的独立判读。 | 已核对双格式复测记录 |
 
 ---
 
@@ -54,6 +56,9 @@
 
 | 症状 | 文件 | 章节 |
 |---|---|---|
+| 控制台打印 `Usage:` 后无 DWG | [控制台转换及回读](20261123-coreconsole-dwg-roundtrip.md) | 处理、预防 |
+| 房间可达但两门可能互挡，或门口余宽无法判断 | [房间通行与门扇冲突](20261123-room-access-and-rack-loop.md) | 第 2、3 节 |
+| 柜背距墙足够但转角可能被占，或 C01 通过而整图退出码为 `1` | [机柜检修环道](20261123-room-access-and-rack-loop.md) | 第 2 至 4 节 |
 | **文字检查说「标签被线穿过」，但真正错的是那个实体的位置** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 盲区一 / 根因一 / 处理一：新增 `opening_blocked` |
 | **机架/家具站在门的开启范围内（门打不开）** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 处理一：门只从 ARC 读，铰点=弧心、门扇=半径 |
 | **建筑图上跑全量 critique 冒出几十条 `pid_*`** | [`20261119-physical-collision-and-domain-noise.md`](20261119-physical-collision-and-domain-noise.md) | 盲区二 / 根因二 / 处理二：`has_pid_content` 收紧 |
